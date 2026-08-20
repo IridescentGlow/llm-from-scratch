@@ -73,9 +73,10 @@ Update this section as you go — this is the single source of truth for
 "where are we."
 
 ```
-Stage:     3 - Architecture
+Stage:     4 - Pretraining loop
 Status:    implemented and tested
-Last run:  2026-08-20 — tests/ (full suite), 22 passed
+Last run:  2026-08-20 — tests/ (full suite), 31 passed; manual scripts/train.py
+           smoke run on a tiny hand-written corpus, train_loss 5.0 -> 3.2 over 30 steps.
 Notes:     Stage 1 (Tokenization): implemented and tested.
            BPETokenizer (byte-level BPE) in
            src/llm_from_scratch/tokenizer/bpe.py, exported from
@@ -100,7 +101,16 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            attention (no nn.TransformerEncoder). No rotary embeddings /
            fused attention kernels yet (see simplification note in
            docs/03-architecture.md).
-           Next: Stage 4 - Pretraining loop (not started, awaiting go-ahead).
+
+           Stage 4 (Pretraining loop): implemented and tested.
+           src/llm_from_scratch/train/loop.py — TrainConfig, load_config,
+           get_lr (linear warmup then flat), estimate_loss (forward-only),
+           train_model (forward -> loss -> backward -> grad clip ->
+           optimizer step, per max_steps; logs + checkpoints). scripts/train.py
+           wires tokenizer + data pipeline + model + train_model end to end
+           (trains a tokenizer on data/raw/*.txt at run time; no tokenizer
+           persistence yet). See decisions log: PyYAML bare-exponent float bug.
+           Next: Stage 5 - Evaluation (not started, awaiting go-ahead).
 ```
 
 ## Decisions log
@@ -109,7 +119,12 @@ Append short entries here when a non-obvious choice is made, so future
 sessions don't relitigate it.
 
 ```
-- (none yet)
+- PyYAML's default resolver only treats bare-exponent numbers (e.g. `3e-4`)
+  as floats if they include a decimal point (`3.0e-4`); without one, it
+  silently parses them as strings. configs/small.yaml uses the bare form
+  for learning_rate, which broke AdamW's lr check. Fixed by coercing
+  learning_rate to float explicitly in train.loop.load_config, rather than
+  rewriting every config file to use the decimal-point form.
 ```
 
 ## Running things

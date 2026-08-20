@@ -3,3 +3,13 @@ Stage 4 — Pretraining loop.
 See docs/04-pretraining.md before implementing here.
 Expected surface: a plain PyTorch training loop with checkpointing + logging.
 """
+
+from .loop import TrainConfig, estimate_loss, get_lr, load_config, train_model
+
+__all__ = [
+    "TrainConfig",
+    "estimate_loss",
+    "get_lr",
+    "load_config",
+    "train_model",
+]
