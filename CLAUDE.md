@@ -73,9 +73,9 @@ Update this section as you go — this is the single source of truth for
 "where are we."
 
 ```
-Stage:     2 - Data pipeline
+Stage:     3 - Architecture
 Status:    implemented and tested
-Last run:  2026-08-20 — tests/ (full suite), 15 passed
+Last run:  2026-08-20 — tests/ (full suite), 22 passed
 Notes:     Stage 1 (Tokenization): implemented and tested.
            BPETokenizer (byte-level BPE) in
            src/llm_from_scratch/tokenizer/bpe.py, exported from
@@ -90,7 +90,17 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            input/target shift-by-one) + get_dataloader (batching, random
            sampling via shuffle=True). Token ids stored as uint16 on disk
            (fits vocab sizes up to 65,536).
-           Next: Stage 3 - Architecture (not started, awaiting go-ahead).
+
+           Stage 3 (Architecture): implemented and tested.
+           src/llm_from_scratch/model/gpt.py — GPTConfig, CausalSelfAttention,
+           FeedForward, Block, GPT. Surface: GPT(config).forward(idx,
+           targets=None) -> (logits, loss); GPT.generate(idx, max_new_tokens)
+           (greedy argmax sampling). Pre-norm transformer blocks, learned
+           absolute positional embeddings, hand-written multi-head causal
+           attention (no nn.TransformerEncoder). No rotary embeddings /
+           fused attention kernels yet (see simplification note in
+           docs/03-architecture.md).
+           Next: Stage 4 - Pretraining loop (not started, awaiting go-ahead).
 ```
 
 ## Decisions log
