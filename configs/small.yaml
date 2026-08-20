@@ -1,0 +1,22 @@
+# Small config: fits on a single consumer GPU, or CPU for a slow smoke test.
+model:
+  vocab_size: 8000      # set by tokenizer training, update after stage 1
+  context_length: 256
+  n_layer: 6
+  n_head: 6
+  n_embd: 384
+  dropout: 0.1
+
+train:
+  batch_size: 32
+  learning_rate: 3e-4
+  warmup_steps: 100
+  max_steps: 5000
+  grad_clip: 1.0
+  eval_every: 250
+  checkpoint_dir: checkpoints/
+
+data:
+  raw_path: data/raw/
+  processed_path: data/processed/
+  train_split: 0.9
