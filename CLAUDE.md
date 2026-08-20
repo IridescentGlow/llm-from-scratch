@@ -73,15 +73,24 @@ Update this section as you go — this is the single source of truth for
 "where are we."
 
 ```
-Stage:     1 - Tokenization
+Stage:     2 - Data pipeline
 Status:    implemented and tested
-Last run:  2026-08-20 — tests/test_tokenizer.py, 5 passed
-Notes:     BPETokenizer (byte-level BPE) in
+Last run:  2026-08-20 — tests/ (full suite), 15 passed
+Notes:     Stage 1 (Tokenization): implemented and tested.
+           BPETokenizer (byte-level BPE) in
            src/llm_from_scratch/tokenizer/bpe.py, exported from
            tokenizer/__init__.py. Surface: .train(corpus, vocab_size),
            .encode(text), .decode(ids). No regex pre-tokenization yet
            (see simplification note in docs/01-tokenization.md).
-           Next: Stage 2 - Data pipeline (not started, awaiting go-ahead).
+
+           Stage 2 (Data pipeline): implemented and tested.
+           src/llm_from_scratch/data/tokens.py — write_token_ids,
+           load_token_ids (numpy.memmap-backed), train_val_split.
+           src/llm_from_scratch/data/dataset.py — TokenDataset (windowing,
+           input/target shift-by-one) + get_dataloader (batching, random
+           sampling via shuffle=True). Token ids stored as uint16 on disk
+           (fits vocab sizes up to 65,536).
+           Next: Stage 3 - Architecture (not started, awaiting go-ahead).
 ```
 
 ## Decisions log
