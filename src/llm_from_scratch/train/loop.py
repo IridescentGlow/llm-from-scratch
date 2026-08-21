@@ -11,6 +11,7 @@ import yaml
 
 from llm_from_scratch.data import TokenDataset, get_dataloader
 from llm_from_scratch.model import GPT, GPTConfig
+from llm_from_scratch.tokenizer import BPETokenizer
 
 
 @dataclass
@@ -75,12 +76,18 @@ def train_model(
     device: str = "cpu",
     log_every: int = 1,
     log_fn: Callable[[str], None] = print,
+    tokenizer: BPETokenizer | None = None,
 ) -> dict:
     """Run the pretraining loop for `config.max_steps` steps.
 
     One step = one batch: forward pass -> loss -> backward pass -> optimizer
     step, exactly as described in docs/04-pretraining.md. Returns a dict with
     per-step train losses and the checkpoint path.
+
+    If `tokenizer` is given, it's saved as `tokenizer.json` next to the
+    checkpoint (see docs/01-tokenization.md, "Tokenizer persistence") so the
+    checkpoint directory is a self-contained unit: weights + config +
+    the exact tokenizer that produced this run's training data.
     """
     model.to(device)
     model.train()
@@ -129,4 +136,9 @@ def train_model(
         checkpoint_path,
     )
 
-    return {"train_losses": train_losses, "checkpoint_path": str(checkpoint_path)}
+    result = {"train_losses": train_losses, "checkpoint_path": str(checkpoint_path)}
+    if tokenizer is not None:
+        tokenizer_path = checkpoint_dir / "tokenizer.json"
+        tokenizer.save(tokenizer_path)
+        result["tokenizer_path"] = str(tokenizer_path)
+    return result

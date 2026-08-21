@@ -4,7 +4,7 @@ See docs/06-finetuning.md before implementing here.
 Expected surface: instruction-tuning pass on top of a pretrained checkpoint.
 """
 
-from .checkpoint import load_pretrained_model
+from .checkpoint import load_pretrained_model, load_tokenizer_for_checkpoint
 from .data import InstructionExample, build_corpus, format_example, load_examples_jsonl
 
 __all__ = [
@@ -13,4 +13,5 @@ __all__ = [
     "format_example",
     "load_examples_jsonl",
     "load_pretrained_model",
+    "load_tokenizer_for_checkpoint",
 ]

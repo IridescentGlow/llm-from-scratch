@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pytest
 import torch
 
 from llm_from_scratch.data import TokenDataset
@@ -11,8 +12,10 @@ from llm_from_scratch.finetune import (
     format_example,
     load_examples_jsonl,
     load_pretrained_model,
+    load_tokenizer_for_checkpoint,
 )
 from llm_from_scratch.model import GPT, GPTConfig
+from llm_from_scratch.tokenizer import BPETokenizer
 from llm_from_scratch.train import TrainConfig, train_model
 
 
@@ -75,6 +78,32 @@ def test_load_pretrained_model_restores_weights(tmp_path):
     assert loaded.config == config
     for name, param in model.named_parameters():
         assert torch.equal(param, loaded.state_dict()[name])
+
+
+def test_load_tokenizer_for_checkpoint_loads_saved_tokenizer(tmp_path):
+    tokenizer = BPETokenizer()
+    tokenizer.train("hello world, this is a tiny corpus for testing.", vocab_size=260)
+    checkpoint_path = tmp_path / "pretrained.pt"
+    checkpoint_path.write_bytes(b"")  # only the path/parent matter here
+    tokenizer.save(tmp_path / "tokenizer.json")
+
+    loaded = load_tokenizer_for_checkpoint(checkpoint_path)
+
+    assert loaded.merges == tokenizer.merges
+    assert loaded.vocab == tokenizer.vocab
+
+
+def test_load_tokenizer_for_checkpoint_raises_clear_error_when_missing(tmp_path):
+    """A checkpoint saved before tokenizer persistence existed has no
+    tokenizer.json -- this must fail loudly, not silently retrain a
+    (possibly different) tokenizer. See docs/01-tokenization.md,
+    "Migration and compatibility with existing checkpoints".
+    """
+    checkpoint_path = tmp_path / "pretrained.pt"
+    checkpoint_path.write_bytes(b"")
+
+    with pytest.raises(FileNotFoundError, match="predates tokenizer persistence"):
+        load_tokenizer_for_checkpoint(checkpoint_path)
 
 
 def test_finetuning_improves_loss_on_instruction_corpus(tmp_path):

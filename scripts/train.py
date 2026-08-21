@@ -48,8 +48,9 @@ def main():
     model = GPT(model_config)
     print(f"Model has {sum(p.numel() for p in model.parameters()):,} parameters.")
 
-    result = train_model(model, train_dataset, val_dataset, train_config)
+    result = train_model(model, train_dataset, val_dataset, train_config, tokenizer=tokenizer)
     print(f"Checkpoint saved to {result['checkpoint_path']}")
+    print(f"Tokenizer saved to {result['tokenizer_path']}")
 
 
 if __name__ == "__main__":

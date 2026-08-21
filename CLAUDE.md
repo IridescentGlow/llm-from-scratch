@@ -74,21 +74,28 @@ Update this section as you go — this is the single source of truth for
 "where are we."
 
 ```
-Stage:     7 - Generation / Inference
+Stage:     7 - Generation / Inference (+ tokenizer persistence milestone)
 Status:    implemented and tested
-Last run:  2026-08-21 — tests/ (full suite), 50 passed; manual scripts/train.py
-           + scripts/generate.py smoke run: tiny pretrained checkpoint
+Last run:  2026-08-21 — tests/ (full suite), 56 passed; manual smoke test of
+           the tokenizer persistence milestone: trained a tiny checkpoint
            (vocab_size 300, context_length 16, n_layer 2, n_embd 32,
-           45,184 params, train_loss 5.61 -> 5.31 over 60 steps), then
-           scripts/generate.py run against it with prompt "The fox",
-           both greedy (--temperature 0.0) and sampling (--temperature 0.8),
-           30 new tokens each, decoded successfully end to end.
+           45,184 params, train_loss 4.24 -> 2.39 over 60 steps), confirmed
+           tokenizer.json was saved next to latest.pt; ran scripts/evaluate.py
+           and scripts/generate.py (no --config needed) against it with no
+           retraining; ran scripts/finetune.py on a 6-example instruction set
+           and confirmed the fine-tuned checkpoint's tokenizer.json is
+           byte-identical to the pretrained one's (diff: no difference) --
+           direct confirmation the finetune tokenizer bug is fixed; confirmed
+           a checkpoint missing tokenizer.json fails scripts/generate.py
+           immediately with an explicit migration error instead of silently
+           retraining.
 Notes:     Stage 1 (Tokenization): implemented and tested.
            BPETokenizer (byte-level BPE) in
            src/llm_from_scratch/tokenizer/bpe.py, exported from
            tokenizer/__init__.py. Surface: .train(corpus, vocab_size),
-           .encode(text), .decode(ids). No regex pre-tokenization yet
-           (see simplification note in docs/01-tokenization.md).
+           .encode(text), .decode(ids), .save(path), .load(path). No regex
+           pre-tokenization yet (see simplification note in
+           docs/01-tokenization.md).
 
            Stage 2 (Data pipeline): implemented and tested.
            src/llm_from_scratch/data/tokens.py — write_token_ids,
@@ -112,10 +119,13 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            src/llm_from_scratch/train/loop.py — TrainConfig, load_config,
            get_lr (linear warmup then flat), estimate_loss (forward-only),
            train_model (forward -> loss -> backward -> grad clip ->
-           optimizer step, per max_steps; logs + checkpoints). scripts/train.py
-           wires tokenizer + data pipeline + model + train_model end to end
-           (trains a tokenizer on data/raw/*.txt at run time; no tokenizer
-           persistence yet). See decisions log: PyYAML bare-exponent float bug.
+           optimizer step, per max_steps; logs + checkpoints; optionally
+           saves a passed-in tokenizer as tokenizer.json next to the
+           checkpoint -- see the tokenizer persistence milestone below).
+           scripts/train.py wires tokenizer + data pipeline + model +
+           train_model end to end, trains a tokenizer on data/raw/*.txt,
+           and now passes it to train_model so it's persisted. See decisions
+           log: PyYAML bare-exponent float bug.
 
            Stage 5 (Evaluation): implemented and tested.
            src/llm_from_scratch/eval/metrics.py — evaluate_model(model,
@@ -123,11 +133,10 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            {loss, perplexity, num_batches, num_tokens}. Forward-only,
            deterministic (shuffle=False), reuses Stage 2's get_dataloader
            and Stage 3's GPT directly. scripts/evaluate.py loads a
-           checkpoint + config, rebuilds the val split (retrains tokenizer
-           on the same corpus -- no tokenizer persistence yet, see
-           docs/05-evaluation.md limitation note), and prints the four
-           numbers. Generation/sampling explicitly out of scope for this
-           stage.
+           checkpoint + config, rebuilds the val split, and loads the
+           checkpoint's persisted tokenizer (load_tokenizer_for_checkpoint)
+           instead of retraining one, and prints the four numbers.
+           Generation/sampling explicitly out of scope for this stage.
 
            Stage 6 (Fine-tuning): implemented and tested.
            src/llm_from_scratch/finetune/data.py — InstructionExample,
@@ -135,7 +144,11 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            template), build_corpus, load_examples_jsonl.
            src/llm_from_scratch/finetune/checkpoint.py —
            load_pretrained_model(checkpoint_path) -> GPT, rebuilds a GPT
-           from a Stage 4 checkpoint's saved model_config + state_dict.
+           from a Stage 4 checkpoint's saved model_config + state_dict;
+           load_tokenizer_for_checkpoint(checkpoint_path) -> BPETokenizer,
+           loads the tokenizer.json saved next to a checkpoint (raises
+           FileNotFoundError for a checkpoint saved before persistence
+           existed -- see the tokenizer persistence milestone below).
            scripts/finetune.py loads a pretrained checkpoint, formats
            data/finetune/examples.jsonl, and reuses Stage 1's tokenizer,
            Stage 2's TokenDataset, Stage 4's train_model, and Stage 5's
@@ -145,11 +158,8 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            overwritten) differs from pretraining. Prints val loss/perplexity
            and a generation sample before and after. No loss masking on
            instruction tokens (see simplification note in
-           docs/06-finetuning.md); tokenizer retrained per run, same
-           persistence limitation as Stage 5, with an added note that a
-           large vocab_size relative to a small fine-tuning corpus can
-           collapse it to too few tokens. Full Stage 1-6 pipeline now
-           implemented and tested end to end.
+           docs/06-finetuning.md). Full Stage 1-6 pipeline now implemented
+           and tested end to end.
 
            Stage 7 (Generation / Inference): implemented and tested.
            GPT.generate (src/llm_from_scratch/model/gpt.py, Stage 3)
@@ -162,22 +172,64 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            device="cpu") -> str: encodes with Stage 1's tokenizer, calls
            GPT.generate, decodes back to text. Reuses Stage 6's
            load_pretrained_model for checkpoint loading -- no new
-           checkpoint logic. scripts/generate.py is now a working CLI
-           (--checkpoint, --config, --prompt, --max-new-tokens,
-           --temperature); --config is needed because the tokenizer isn't
-           persisted yet, so it retrains one on the checkpoint's original
-           corpus (data.raw_path) at the checkpoint's vocab_size, same
-           limitation as Stage 5/6. Bug found and fixed: BPETokenizer.decode
-           (Stage 1) had no UTF-8 error handling -- harmless for every
-           prior stage (only ever decoded ids from encoding real text,
-           always valid UTF-8), but generation is the first stage to decode
-           a model's own output, and an undertrained model can legally
-           emit a raw byte token that isn't valid UTF-8 alone. Fixed with
+           checkpoint logic. scripts/generate.py is a working CLI
+           (--checkpoint, --prompt, --max-new-tokens, --temperature) --
+           --config was removed once tokenizer persistence (below) made it
+           unnecessary. Bug found and fixed: BPETokenizer.decode (Stage 1)
+           had no UTF-8 error handling -- harmless for every prior stage
+           (only ever decoded ids from encoding real text, always valid
+           UTF-8), but generation is the first stage to decode a model's
+           own output, and an undertrained model can legally emit a raw
+           byte token that isn't valid UTF-8 alone. Fixed with
            errors="replace"; encode/decode round-trips on real text are
            unaffected. Full Stage 1-7 pipeline now implemented and tested
            end to end.
-           Next: none -- all documented stages complete, awaiting
-           direction on what's next (review/commit or further work).
+
+           Tokenizer persistence milestone (cross-cutting, post-Stage-7
+           review): implemented and tested. A project review after Stage 7
+           found that scripts/finetune.py retrained BPE on the
+           *fine-tuning* corpus rather than the pretraining corpus, which
+           silently gives token ids a different meaning than the ones the
+           pretrained embedding table learned (see docs/01-tokenization.md,
+           "Tokenizer persistence", for the full worked example and design).
+           Fixed by adding real persistence: BPETokenizer.save(path) /
+           BPETokenizer.load(path) (plain JSON: merges, vocab, a reserved
+           empty special_tokens slot -- not pickle, to avoid the same
+           arbitrary-code-on-load risk as torch.load(weights_only=False)).
+           train_model takes an optional tokenizer argument and saves it as
+           tokenizer.json next to latest.pt when given one; scripts/train.py
+           now passes its trained tokenizer through. A new
+           load_tokenizer_for_checkpoint(checkpoint_path) -> BPETokenizer
+           (src/llm_from_scratch/finetune/checkpoint.py, alongside
+           load_pretrained_model) loads that file. scripts/evaluate.py,
+           scripts/finetune.py, and scripts/generate.py all call it instead
+           of retraining a tokenizer from a corpus; scripts/generate.py no
+           longer needs --config at all. Migration decision: a checkpoint
+           saved before this milestone has no tokenizer.json --
+           load_tokenizer_for_checkpoint raises FileNotFoundError with an
+           explicit explanation rather than falling back to retraining,
+           since a retrained fallback's correctness would depend on an
+           unverifiable assumption (the raw corpus being byte-identical to
+           what was used at pretraining time). Old checkpoints (all from
+           tiny smoke tests) are not migrated -- regenerate them with the
+           current scripts/train.py. Tests added in tests/test_tokenizer.py
+           (save/load round-trip, encode/decode behavior preserved),
+           tests/test_train.py (tokenizer.json written iff a tokenizer is
+           passed), and tests/test_finetune.py (load_tokenizer_for_checkpoint
+           success path and explicit missing-file error). Full suite: 56
+           passed (7 tokenizer + 10 data + 9 model + 11 train + 8 eval + 7
+           finetune + 4 generate). Manual verification: pretrained a tiny
+           checkpoint, confirmed tokenizer.json was saved; ran evaluate.py
+           and generate.py against it with no retraining; ran finetune.py
+           and confirmed (via diff) the fine-tuned checkpoint's
+           tokenizer.json is byte-identical to the pretrained one's --
+           direct confirmation the bug is fixed; confirmed a checkpoint
+           missing tokenizer.json fails generate.py immediately with the
+           explicit migration error instead of silently retraining.
+
+           Next: none -- all documented stages complete, tokenizer
+           persistence milestone complete, awaiting direction on what's
+           next (review/commit or further work). Not committed yet.
 ```
 
 ## Decisions log

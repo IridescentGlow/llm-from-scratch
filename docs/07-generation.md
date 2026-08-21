@@ -206,14 +206,19 @@ New code:
   `GPT.generate`, decodes the result (`BPETokenizer.decode`). No new model
   or checkpoint logic — reuses Stage 6's `load_pretrained_model` for
   loading and Stage 3's `GPT.generate` for the loop.
-- `scripts/generate.py` — CLI with `--checkpoint`, `--config`, `--prompt`,
+- `scripts/generate.py` — CLI with `--checkpoint`, `--prompt`,
   `--max-new-tokens` (default 50), `--temperature` (default 0.0, greedy).
-  `--config` is needed for the same reason as `scripts/evaluate.py`: the
-  tokenizer isn't persisted yet, so the script retrains one on the
-  checkpoint's original corpus (`data.raw_path` in the config) at the
-  checkpoint's `vocab_size` to reproduce the same tokenizer used at
-  training time. Same known limitation as Stages 5–6: only valid if
-  `data/raw/` hasn't changed since the checkpoint was trained.
+
+Update (tokenizer persistence milestone): the tokenizer-retraining
+limitation above is resolved. `scripts/generate.py` now calls
+`load_tokenizer_for_checkpoint` (see docs/01-tokenization.md, "Tokenizer
+persistence") to load the exact tokenizer saved next to the checkpoint by
+`train_model`, instead of retraining one from `data.raw_path`. This also
+means `--config` is no longer needed by this script at all — it was only
+ever there to locate the raw corpus for retraining. Pointing it at a
+checkpoint saved before this milestone (no `tokenizer.json` present) now
+fails immediately with an explicit error rather than silently retraining
+a possibly-different tokenizer.
 
 Tests: `tests/test_model.py` adds `test_generate_greedy_is_deterministic`
 (same prompt, same output, twice) and

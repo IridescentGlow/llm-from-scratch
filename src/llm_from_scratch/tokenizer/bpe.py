@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import json
 from collections import Counter
+from pathlib import Path
 
 Pair = tuple[int, int]
 
@@ -76,6 +79,42 @@ class BPETokenizer:
         """
         raw = b"".join(self.vocab[i] for i in ids)
         return raw.decode("utf-8", errors="replace")
+
+    def save(self, path: str | Path) -> None:
+        """Persist this exact tokenizer (merges + vocab) to a JSON file.
+
+        See docs/01-tokenization.md, "Tokenizer persistence": a checkpoint's
+        weights are only meaningful under the specific tokenizer that
+        produced their training data. Saving both `merges` and `vocab` (even
+        though `vocab` is derivable from `merges` + the base 256 bytes)
+        avoids re-deriving anything at load time. Plain JSON, not `pickle` --
+        loading a tokenizer should never risk executing arbitrary code.
+        """
+        data = {
+            "merges": [[a, b, new_id] for (a, b), new_id in self.merges.items()],
+            "vocab": {
+                str(token_id): base64.b64encode(token_bytes).decode("ascii")
+                for token_id, token_bytes in self.vocab.items()
+            },
+            # Reserved for future additions (e.g. an end-of-text token) so
+            # they don't require a second, incompatible file format.
+            "special_tokens": {},
+        }
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+    @classmethod
+    def load(cls, path: str | Path) -> "BPETokenizer":
+        """Reconstruct a tokenizer saved by `save()` -- no `train()` call involved."""
+        with open(path) as f:
+            data = json.load(f)
+        tokenizer = cls()
+        tokenizer.merges = {(a, b): new_id for a, b, new_id in data["merges"]}
+        tokenizer.vocab = {
+            int(token_id): base64.b64decode(encoded)
+            for token_id, encoded in data["vocab"].items()
+        }
+        return tokenizer
 
     @staticmethod
     def _count_pairs(ids: list[int]) -> Counter[Pair]:

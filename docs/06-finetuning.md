@@ -192,13 +192,20 @@ point of the smoke test is verifying the training mechanics work, not
 generation quality, which needs a much larger pretraining run to assess
 meaningfully.
 
-Known limitation, not an integration bug (same root cause as Stage 5's
-tokenizer-persistence note): the tokenizer is retrained on the
-fine-tuning corpus each run, at the checkpoint's `vocab_size`. If that
-`vocab_size` is large relative to a small fine-tuning corpus, BPE training
-can merge the corpus down to very few tokens (in the extreme, one). Keep
-the fine-tuning corpus large enough relative to `vocab_size` that this
-doesn't happen, or reduce `vocab_size` for small experiments.
+Former limitation — this one *was* a real bug, not just an inconvenience,
+and is now fixed (tokenizer persistence milestone): `scripts/finetune.py`
+used to retrain a fresh tokenizer on the *fine-tuning* corpus (not the
+pretraining corpus), at the checkpoint's `vocab_size`. Because BPE merges
+depend on corpus frequency statistics, a tokenizer retrained on a small,
+differently-distributed fine-tuning corpus assigns different strings to
+the same ids than the tokenizer that produced the pretraining data —
+silently invalidating the pretrained embedding table for every token
+(see docs/01-tokenization.md, "Why retraining BPE on a different corpus
+silently scrambles token IDs" for a worked example). `scripts/finetune.py`
+now calls `load_tokenizer_for_checkpoint` and uses the checkpoint's exact
+pretraining-time tokenizer — confirmed by a manual smoke test showing the
+fine-tuned checkpoint's `tokenizer.json` is byte-identical to the
+pretrained one's.
 
 As documented above, this implementation does not mask the loss on
 instruction tokens (production instruction-tuning usually does) — it

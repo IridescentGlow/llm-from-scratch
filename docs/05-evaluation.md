@@ -146,10 +146,12 @@ steps), then ran `scripts/evaluate.py` against it — reported
 `val_loss=3.83`, `perplexity=46.06` over 4 batches / 104 tokens, matching
 the training run's own last validation check exactly.
 
-One limitation, not an integration bug: Stage 1's tokenizer has no
-save/load yet, so `scripts/evaluate.py` retrains a tokenizer on the same
-corpus + `vocab_size` to deterministically reproduce the same token
-stream and split used at training time. This only holds if `data/raw/`
-hasn't changed since the checkpoint was trained — tokenizer persistence
-is a natural improvement for a later pass, not added here to stay in
-scope for this stage.
+Former limitation, now resolved (tokenizer persistence milestone):
+`scripts/evaluate.py` used to retrain a tokenizer on the same corpus +
+`vocab_size` to reproduce the training-time token stream — correct in
+practice, but only by the coincidence that BPE's merge order is
+deterministic for an unchanged corpus. It now calls
+`load_tokenizer_for_checkpoint` (see docs/01-tokenization.md, "Tokenizer
+persistence") and loads the exact tokenizer `train_model` saved next to
+the checkpoint — no retraining, no dependency on `data/raw/` being
+unchanged.

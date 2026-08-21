@@ -10,8 +10,12 @@ import yaml
 
 from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
 from llm_from_scratch.eval import evaluate_model
-from llm_from_scratch.finetune import build_corpus, load_examples_jsonl, load_pretrained_model
-from llm_from_scratch.tokenizer import BPETokenizer
+from llm_from_scratch.finetune import (
+    build_corpus,
+    load_examples_jsonl,
+    load_pretrained_model,
+    load_tokenizer_for_checkpoint,
+)
 from llm_from_scratch.train import TrainConfig, train_model
 
 
@@ -35,12 +39,13 @@ def main():
     examples = load_examples_jsonl(data_config["examples_path"])
     corpus = build_corpus(examples)
 
-    # Same tokenizer-persistence limitation as Stage 5: no saved tokenizer yet,
-    # so we retrain one on this fine-tuning corpus at the checkpoint's vocab_size.
-    # A fine-tuning corpus much smaller than that vocab_size can collapse to very
-    # few tokens (see docs/06-finetuning.md).
-    tokenizer = BPETokenizer()
-    tokenizer.train(corpus, vocab_size=model_config.vocab_size)
+    # Load the exact tokenizer this checkpoint was pretrained with -- do NOT
+    # retrain a new one on the (small, differently-distributed) fine-tuning
+    # corpus. Retraining here used to silently give token ids a different
+    # meaning than the ones the pretrained embedding table learned (see
+    # docs/01-tokenization.md, "Tokenizer persistence", and
+    # docs/06-finetuning.md).
+    tokenizer = load_tokenizer_for_checkpoint(args.checkpoint)
     token_ids = tokenizer.encode(corpus)
 
     processed_path = Path(data_config["processed_path"])
@@ -60,7 +65,7 @@ def main():
     print(f"before fine-tuning: val_loss={before['loss']:.4f} perplexity={before['perplexity']:.2f}")
     print(f"before fine-tuning generation:\n{before_text}\n")
 
-    result = train_model(model, train_dataset, val_dataset, train_config)
+    result = train_model(model, train_dataset, val_dataset, train_config, tokenizer=tokenizer)
 
     after = evaluate_model(model, val_dataset, batch_size=train_config.batch_size)
     after_text = tokenizer.decode(model.generate(prompt_ids, max_new_tokens=20)[0].tolist())

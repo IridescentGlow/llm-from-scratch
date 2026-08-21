@@ -10,8 +10,8 @@ import yaml
 
 from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
 from llm_from_scratch.eval import evaluate_model
+from llm_from_scratch.finetune import load_tokenizer_for_checkpoint
 from llm_from_scratch.model import GPT
-from llm_from_scratch.tokenizer import BPETokenizer
 
 
 def main():
@@ -37,12 +37,11 @@ def main():
         )
     corpus = "\n".join(f.read_text() for f in text_files)
 
-    # Tokenizer has no persistence yet (Stage 1) -- retraining on the same
-    # corpus + vocab_size deterministically reproduces the same token
-    # stream used at training time. Only valid if data/raw hasn't changed
-    # since the checkpoint was trained.
-    tokenizer = BPETokenizer()
-    tokenizer.train(corpus, vocab_size=model_config.vocab_size)
+    # Loads the exact tokenizer train_model saved alongside this checkpoint
+    # -- see docs/01-tokenization.md, "Tokenizer persistence". Raises a
+    # clear error instead of retraining if this checkpoint predates
+    # tokenizer persistence.
+    tokenizer = load_tokenizer_for_checkpoint(args.checkpoint)
     token_ids = tokenizer.encode(corpus)
 
     processed_path = Path(data_config["processed_path"])

@@ -3,6 +3,7 @@ import torch
 
 from llm_from_scratch.data import TokenDataset
 from llm_from_scratch.model import GPT, GPTConfig
+from llm_from_scratch.tokenizer import BPETokenizer
 from llm_from_scratch.train import TrainConfig, estimate_loss, get_lr, load_config, train_model
 from llm_from_scratch.train.loop import get_dataloader
 
@@ -86,6 +87,45 @@ def test_train_model_runs_and_produces_checkpoint(tmp_path):
     checkpoint = torch.load(checkpoint_path, weights_only=False)
     assert "model_state_dict" in checkpoint
     assert checkpoint["model_config"].vocab_size == model_config.vocab_size
+
+
+def test_train_model_saves_tokenizer_when_given_one(tmp_path):
+    model_config = _tiny_model_config()
+    train_config = _tiny_train_config(checkpoint_dir=str(tmp_path / "ckpt"))
+    model = GPT(model_config)
+    train_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length)
+    val_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length, length=80)
+
+    tokenizer = BPETokenizer()
+    tokenizer.train("hello world, this is a tiny corpus for testing.", vocab_size=260)
+
+    result = train_model(
+        model, train_dataset, val_dataset, train_config, log_fn=lambda _msg: None, tokenizer=tokenizer
+    )
+
+    tokenizer_path = tmp_path / "ckpt" / "tokenizer.json"
+    assert tokenizer_path.exists()
+    assert result["tokenizer_path"] == str(tokenizer_path)
+
+    loaded = BPETokenizer.load(tokenizer_path)
+    assert loaded.merges == tokenizer.merges
+    assert loaded.vocab == tokenizer.vocab
+
+
+def test_train_model_without_tokenizer_saves_no_tokenizer_file(tmp_path):
+    """tokenizer is optional -- omitting it must not create a tokenizer.json
+    or add a tokenizer_path key, to avoid silently implying one was saved.
+    """
+    model_config = _tiny_model_config()
+    train_config = _tiny_train_config(checkpoint_dir=str(tmp_path / "ckpt"))
+    model = GPT(model_config)
+    train_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length)
+    val_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length, length=80)
+
+    result = train_model(model, train_dataset, val_dataset, train_config, log_fn=lambda _msg: None)
+
+    assert not (tmp_path / "ckpt" / "tokenizer.json").exists()
+    assert "tokenizer_path" not in result
 
 
 def test_weights_change_after_a_training_step(tmp_path):

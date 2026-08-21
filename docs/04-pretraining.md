@@ -178,3 +178,12 @@ decimal point (`3.0e-4`) — without one, `3e-4` parses as a string, which
 silently broke `AdamW`'s learning-rate check. `configs/small.yaml` uses
 the bare-exponent form, so `load_config` now coerces `learning_rate` to
 `float` explicitly (see `tests/test_train.py::test_load_config_coerces_bare_exponent_learning_rate`).
+
+Update (tokenizer persistence milestone): `train_model` now takes an
+optional `tokenizer` argument and, when given one, saves it as
+`tokenizer.json` next to `latest.pt` in `checkpoint_dir` — see
+docs/01-tokenization.md, "Tokenizer persistence". `scripts/train.py` passes
+its trained tokenizer through. This makes a checkpoint directory a
+self-contained unit (weights + config + the exact tokenizer used to
+produce its training data), which Stages 5–7 now rely on instead of
+retraining a tokenizer from the raw corpus each time.

@@ -47,3 +47,29 @@ def test_untrained_tokenizer_is_byte_level_roundtrip():
     text = "still works: café"
     assert tok.decode(tok.encode(text)) == text
     assert tok.vocab_size == 256
+
+
+def test_save_load_preserves_merges_and_vocab(tmp_path):
+    tok = _trained_tokenizer(vocab_size=280)
+    path = tmp_path / "tokenizer.json"
+    tok.save(path)
+
+    loaded = BPETokenizer.load(path)
+
+    assert loaded.merges == tok.merges
+    assert loaded.vocab == tok.vocab
+    assert loaded.vocab_size == tok.vocab_size
+
+
+def test_save_load_preserves_encode_decode_behavior(tmp_path):
+    """A loaded tokenizer must encode/decode identically to the original --
+    not just have equal merges/vocab, but actually behave the same way.
+    """
+    tok = _trained_tokenizer(vocab_size=280)
+    path = tmp_path / "tokenizer.json"
+    tok.save(path)
+    loaded = BPETokenizer.load(path)
+
+    for text in [CORPUS, "lowest", "a totally unseen sentence!", "héllo — 🚀"]:
+        assert loaded.encode(text) == tok.encode(text)
+        assert loaded.decode(tok.encode(text)) == text
