@@ -73,10 +73,12 @@ Update this section as you go — this is the single source of truth for
 "where are we."
 
 ```
-Stage:     4 - Pretraining loop
+Stage:     5 - Evaluation
 Status:    implemented and tested
-Last run:  2026-08-20 — tests/ (full suite), 31 passed; manual scripts/train.py
-           smoke run on a tiny hand-written corpus, train_loss 5.0 -> 3.2 over 30 steps.
+Last run:  2026-08-20 — tests/ (full suite), 39 passed; manual scripts/train.py
+           + scripts/evaluate.py smoke run on a tiny hand-written corpus:
+           train_loss 5.2 -> 3.1 over 30 steps, then val_loss=3.83,
+           perplexity=46.06 (4 batches / 104 tokens).
 Notes:     Stage 1 (Tokenization): implemented and tested.
            BPETokenizer (byte-level BPE) in
            src/llm_from_scratch/tokenizer/bpe.py, exported from
@@ -110,7 +112,19 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            wires tokenizer + data pipeline + model + train_model end to end
            (trains a tokenizer on data/raw/*.txt at run time; no tokenizer
            persistence yet). See decisions log: PyYAML bare-exponent float bug.
-           Next: Stage 5 - Evaluation (not started, awaiting go-ahead).
+
+           Stage 5 (Evaluation): implemented and tested.
+           src/llm_from_scratch/eval/metrics.py — evaluate_model(model,
+           dataset, batch_size, device="cpu", max_batches=None) ->
+           {loss, perplexity, num_batches, num_tokens}. Forward-only,
+           deterministic (shuffle=False), reuses Stage 2's get_dataloader
+           and Stage 3's GPT directly. scripts/evaluate.py loads a
+           checkpoint + config, rebuilds the val split (retrains tokenizer
+           on the same corpus -- no tokenizer persistence yet, see
+           docs/05-evaluation.md limitation note), and prints the four
+           numbers. Generation/sampling explicitly out of scope for this
+           stage.
+           Next: Stage 6 - Fine-tuning (not started, awaiting go-ahead).
 ```
 
 ## Decisions log
