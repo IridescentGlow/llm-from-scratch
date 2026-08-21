@@ -63,7 +63,7 @@ matching shape for targets. `configs/small.yaml` sets `batch_size`.
 
 ## Handling corpora too big for memory
 
-A "few hundred MB" corpus (per `CLAUDE.md`'s scale assumption) can still
+A "few hundred MB" corpus (this project's target scale) can still
 be too large to tokenize and hold as one Python list comfortably, and
 production corpora are much bigger than that. The fix: pre-tokenize once
 into a flat binary file of token IDs on disk (fixed-width integers), then

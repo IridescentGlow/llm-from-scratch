@@ -13,3 +13,4 @@ checkpoints/*
 *.ckpt
 .ipynb_checkpoints/
 .DS_Store
+CLAUDE.md
