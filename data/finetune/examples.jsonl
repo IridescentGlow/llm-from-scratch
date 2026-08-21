@@ -1,0 +1,30 @@
+{"instruction": "Translate 'good morning' to French.", "response": "Bonjour."}
+{"instruction": "Translate 'thank you' to French.", "response": "Merci."}
+{"instruction": "Translate 'good night' to French.", "response": "Bonne nuit."}
+{"instruction": "What is the capital of France?", "response": "Paris is the capital of France."}
+{"instruction": "What is the capital of Japan?", "response": "Tokyo is the capital of Japan."}
+{"instruction": "What is the capital of Italy?", "response": "Rome is the capital of Italy."}
+{"instruction": "Summarize: The cat sat on the mat and fell asleep.", "response": "A cat fell asleep on a mat."}
+{"instruction": "Summarize: The dog ran across the yard chasing a ball.", "response": "A dog chased a ball across the yard."}
+{"instruction": "What is 2 plus 2?", "response": "2 plus 2 equals 4."}
+{"instruction": "What is 5 plus 3?", "response": "5 plus 3 equals 8."}
+{"instruction": "What is 10 minus 4?", "response": "10 minus 4 equals 6."}
+{"instruction": "Name a color.", "response": "Blue is a color."}
+{"instruction": "Name a fruit.", "response": "Apple is a fruit."}
+{"instruction": "Name an animal.", "response": "Dog is an animal."}
+{"instruction": "Complete the sentence: Roses are red, violets are", "response": "blue."}
+{"instruction": "Give a synonym for 'happy'.", "response": "Joyful is a synonym for happy."}
+{"instruction": "Give a synonym for 'fast'.", "response": "Quick is a synonym for fast."}
+{"instruction": "Give a synonym for 'big'.", "response": "Large is a synonym for big."}
+{"instruction": "What day comes after Monday?", "response": "Tuesday comes after Monday."}
+{"instruction": "What day comes after Friday?", "response": "Saturday comes after Friday."}
+{"instruction": "What season comes after winter?", "response": "Spring comes after winter."}
+{"instruction": "What season comes after summer?", "response": "Autumn comes after summer."}
+{"instruction": "How many days are in a week?", "response": "There are 7 days in a week."}
+{"instruction": "How many months are in a year?", "response": "There are 12 months in a year."}
+{"instruction": "Translate 'hello' to Spanish.", "response": "Hola."}
+{"instruction": "Translate 'goodbye' to Spanish.", "response": "Adios."}
+{"instruction": "What is the opposite of 'hot'?", "response": "Cold is the opposite of hot."}
+{"instruction": "What is the opposite of 'up'?", "response": "Down is the opposite of up."}
+{"instruction": "What is the opposite of 'fast'?", "response": "Slow is the opposite of fast."}
+{"instruction": "Name a shape with three sides.", "response": "A triangle has three sides."}

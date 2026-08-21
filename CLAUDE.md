@@ -73,12 +73,15 @@ Update this section as you go — this is the single source of truth for
 "where are we."
 
 ```
-Stage:     5 - Evaluation
+Stage:     6 - Fine-tuning
 Status:    implemented and tested
-Last run:  2026-08-20 — tests/ (full suite), 39 passed; manual scripts/train.py
-           + scripts/evaluate.py smoke run on a tiny hand-written corpus:
-           train_loss 5.2 -> 3.1 over 30 steps, then val_loss=3.83,
-           perplexity=46.06 (4 batches / 104 tokens).
+Last run:  2026-08-21 — tests/ (full suite), 44 passed; manual scripts/train.py
+           + scripts/finetune.py smoke run: tiny pretrained checkpoint
+           (train_loss 4.83 -> 3.43 over 60 steps), then fine-tuned on 8
+           instruction/response pairs (train_loss 4.43 -> 3.84, val_loss
+           4.50 -> 4.10, perplexity 90.42 -> 60.44 over 80 steps),
+           fine-tuned checkpoint saved separately with confirmed-changed
+           weights.
 Notes:     Stage 1 (Tokenization): implemented and tested.
            BPETokenizer (byte-level BPE) in
            src/llm_from_scratch/tokenizer/bpe.py, exported from
@@ -124,7 +127,30 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            docs/05-evaluation.md limitation note), and prints the four
            numbers. Generation/sampling explicitly out of scope for this
            stage.
-           Next: Stage 6 - Fine-tuning (not started, awaiting go-ahead).
+
+           Stage 6 (Fine-tuning): implemented and tested.
+           src/llm_from_scratch/finetune/data.py — InstructionExample,
+           format_example (fixed "Instruction: ...\nResponse: ...\n"
+           template), build_corpus, load_examples_jsonl.
+           src/llm_from_scratch/finetune/checkpoint.py —
+           load_pretrained_model(checkpoint_path) -> GPT, rebuilds a GPT
+           from a Stage 4 checkpoint's saved model_config + state_dict.
+           scripts/finetune.py loads a pretrained checkpoint, formats
+           data/finetune/examples.jsonl, and reuses Stage 1's tokenizer,
+           Stage 2's TokenDataset, Stage 4's train_model, and Stage 5's
+           evaluate_model completely unchanged -- only configs/finetune.yaml
+           (lower learning_rate, small max_steps, separate checkpoint_dir:
+           checkpoints/finetuned/ so the pretrained checkpoint is never
+           overwritten) differs from pretraining. Prints val loss/perplexity
+           and a generation sample before and after. No loss masking on
+           instruction tokens (see simplification note in
+           docs/06-finetuning.md); tokenizer retrained per run, same
+           persistence limitation as Stage 5, with an added note that a
+           large vocab_size relative to a small fine-tuning corpus can
+           collapse it to too few tokens. Full Stage 1-6 pipeline now
+           implemented and tested end to end.
+           Next: none -- all documented stages complete, awaiting
+           direction on what's next (review/commit or further work).
 ```
 
 ## Decisions log

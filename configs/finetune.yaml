@@ -1,0 +1,15 @@
+# Fine-tuning config. Model architecture comes from the pretrained checkpoint
+# itself (its saved model_config) -- not repeated here.
+train:
+  batch_size: 8
+  learning_rate: 3e-5     # much smaller than pretraining's 3e-4 -- see docs/06-finetuning.md
+  warmup_steps: 10
+  max_steps: 200
+  grad_clip: 1.0
+  eval_every: 50
+  checkpoint_dir: checkpoints/finetuned/
+
+data:
+  examples_path: data/finetune/examples.jsonl
+  processed_path: data/finetune/processed/
+  train_split: 0.9
