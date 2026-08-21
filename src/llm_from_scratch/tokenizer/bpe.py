@@ -66,9 +66,16 @@ class BPETokenizer:
         return ids
 
     def decode(self, ids: list[int]) -> str:
-        """Decode a list of token ids back into text."""
+        """Decode a list of token ids back into text.
+
+        `errors="replace"` because generation (Stage 7) can produce raw byte
+        tokens that aren't valid UTF-8 on their own -- a real model gets
+        better at avoiding this with training, but decode must not crash on
+        an untrained or unlucky sequence. Encoded text always round-trips
+        exactly regardless, since it never contains invalid byte sequences.
+        """
         raw = b"".join(self.vocab[i] for i in ids)
-        return raw.decode("utf-8")
+        return raw.decode("utf-8", errors="replace")
 
     @staticmethod
     def _count_pairs(ids: list[int]) -> Counter[Pair]:

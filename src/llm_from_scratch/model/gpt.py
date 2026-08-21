@@ -142,17 +142,26 @@ class GPT(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx: Tensor, max_new_tokens: int) -> Tensor:
-        """Greedily extend `idx` (batch, seq_len) by `max_new_tokens` tokens.
+    def generate(
+        self, idx: Tensor, max_new_tokens: int, temperature: float = 0.0
+    ) -> Tensor:
+        """Extend `idx` (batch, seq_len) by `max_new_tokens` tokens.
 
-        At each step, take the model's highest-probability next token
-        (argmax over the last position's logits) and append it.
+        At each step: truncate to the last `context_length` tokens, run a
+        forward pass, and pick the next token from the last position's
+        logits. `temperature <= 0` picks the highest-probability token
+        (greedy, deterministic). `temperature > 0` divides logits by
+        temperature, softmaxes, and samples from that distribution.
         """
         self.eval()
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.config.context_length :]
             logits, _ = self(idx_cond)
             next_token_logits = logits[:, -1, :]  # (batch, vocab_size)
-            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+            if temperature <= 0:
+                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+            else:
+                probs = F.softmax(next_token_logits / temperature, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1)
             idx = torch.cat([idx, next_token], dim=1)
         return idx

@@ -100,3 +100,28 @@ def test_generate_respects_context_length_when_prompt_exceeds_it():
     out = model.generate(idx, max_new_tokens=2)
 
     assert out.shape == (1, 6 + 2)
+
+
+def test_generate_greedy_is_deterministic():
+    """temperature <= 0 (the default) must always pick argmax, same output every call."""
+    config = _tiny_config()
+    model = GPT(config)
+    idx = torch.randint(0, config.vocab_size, (2, 3))
+
+    out_a = model.generate(idx, max_new_tokens=5, temperature=0.0)
+    out_b = model.generate(idx, max_new_tokens=5, temperature=0.0)
+
+    assert torch.equal(out_a, out_b)
+
+
+def test_generate_temperature_sampling_produces_valid_token_ids():
+    config = _tiny_config()
+    model = GPT(config)
+    idx = torch.randint(0, config.vocab_size, (2, 3))
+
+    out = model.generate(idx, max_new_tokens=4, temperature=1.0)
+
+    assert out.shape == (2, 3 + 4)
+    assert torch.equal(out[:, :3], idx)  # original tokens preserved
+    assert out.min() >= 0
+    assert out.max() < config.vocab_size

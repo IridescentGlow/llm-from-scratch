@@ -39,6 +39,7 @@ roughly one screen, cut it down, not up.
 4. Pretraining loop — `docs/04-pretraining.md` → `src/llm_from_scratch/train/`
 5. Evaluation — `docs/05-evaluation.md` → `src/llm_from_scratch/eval/`
 6. Fine-tuning / instruction-tuning — `docs/06-finetuning.md` → `src/llm_from_scratch/finetune/`
+7. Generation / inference — `docs/07-generation.md` → `src/llm_from_scratch/generate/`
 
 Each stage should be runnable and testable before moving to the next.
 Don't build stage N+1 on top of an unverified stage N.
@@ -73,15 +74,15 @@ Update this section as you go — this is the single source of truth for
 "where are we."
 
 ```
-Stage:     6 - Fine-tuning
+Stage:     7 - Generation / Inference
 Status:    implemented and tested
-Last run:  2026-08-21 — tests/ (full suite), 44 passed; manual scripts/train.py
-           + scripts/finetune.py smoke run: tiny pretrained checkpoint
-           (train_loss 4.83 -> 3.43 over 60 steps), then fine-tuned on 8
-           instruction/response pairs (train_loss 4.43 -> 3.84, val_loss
-           4.50 -> 4.10, perplexity 90.42 -> 60.44 over 80 steps),
-           fine-tuned checkpoint saved separately with confirmed-changed
-           weights.
+Last run:  2026-08-21 — tests/ (full suite), 50 passed; manual scripts/train.py
+           + scripts/generate.py smoke run: tiny pretrained checkpoint
+           (vocab_size 300, context_length 16, n_layer 2, n_embd 32,
+           45,184 params, train_loss 5.61 -> 5.31 over 60 steps), then
+           scripts/generate.py run against it with prompt "The fox",
+           both greedy (--temperature 0.0) and sampling (--temperature 0.8),
+           30 new tokens each, decoded successfully end to end.
 Notes:     Stage 1 (Tokenization): implemented and tested.
            BPETokenizer (byte-level BPE) in
            src/llm_from_scratch/tokenizer/bpe.py, exported from
@@ -149,6 +150,32 @@ Notes:     Stage 1 (Tokenization): implemented and tested.
            large vocab_size relative to a small fine-tuning corpus can
            collapse it to too few tokens. Full Stage 1-6 pipeline now
            implemented and tested end to end.
+
+           Stage 7 (Generation / Inference): implemented and tested.
+           GPT.generate (src/llm_from_scratch/model/gpt.py, Stage 3)
+           extended in place with an optional temperature parameter --
+           temperature <= 0 (default) keeps the original greedy argmax
+           behavior; temperature > 0 samples via softmax + torch.multinomial.
+           Context truncation and @torch.no_grad() unchanged.
+           src/llm_from_scratch/generate/inference.py -- generate(model,
+           tokenizer, prompt, max_new_tokens, temperature=0.0,
+           device="cpu") -> str: encodes with Stage 1's tokenizer, calls
+           GPT.generate, decodes back to text. Reuses Stage 6's
+           load_pretrained_model for checkpoint loading -- no new
+           checkpoint logic. scripts/generate.py is now a working CLI
+           (--checkpoint, --config, --prompt, --max-new-tokens,
+           --temperature); --config is needed because the tokenizer isn't
+           persisted yet, so it retrains one on the checkpoint's original
+           corpus (data.raw_path) at the checkpoint's vocab_size, same
+           limitation as Stage 5/6. Bug found and fixed: BPETokenizer.decode
+           (Stage 1) had no UTF-8 error handling -- harmless for every
+           prior stage (only ever decoded ids from encoding real text,
+           always valid UTF-8), but generation is the first stage to decode
+           a model's own output, and an undertrained model can legally
+           emit a raw byte token that isn't valid UTF-8 alone. Fixed with
+           errors="replace"; encode/decode round-trips on real text are
+           unaffected. Full Stage 1-7 pipeline now implemented and tested
+           end to end.
            Next: none -- all documented stages complete, awaiting
            direction on what's next (review/commit or further work).
 ```
