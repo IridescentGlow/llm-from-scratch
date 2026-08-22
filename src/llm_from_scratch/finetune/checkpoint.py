@@ -11,8 +11,16 @@ from llm_from_scratch.tokenizer import BPETokenizer
 
 
 def load_pretrained_model(checkpoint_path: str | Path) -> GPT:
-    """Rebuild a GPT from a Stage 4 checkpoint (model_config + model_state_dict)."""
-    checkpoint = torch.load(checkpoint_path, weights_only=False)
+    """Rebuild a GPT from a Stage 4 checkpoint (model_config + model_state_dict).
+
+    Always loads weights onto CPU first (`map_location="cpu"`), regardless
+    of what device the checkpoint was saved from -- a checkpoint saved on a
+    CUDA machine would otherwise fail to load at all on a CPU-only machine.
+    See docs/device-support.md. Callers move the model to the actual target
+    device afterward (`train_model`/`evaluate_model`/`generate` all do this
+    via their `device` argument).
+    """
+    checkpoint = torch.load(checkpoint_path, weights_only=False, map_location="cpu")
     model = GPT(checkpoint["model_config"])
     model.load_state_dict(checkpoint["model_state_dict"])
     return model

@@ -9,6 +9,7 @@ import torch
 import yaml
 
 from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
+from llm_from_scratch.device import resolve_device
 from llm_from_scratch.eval import evaluate_model
 from llm_from_scratch.finetune import (
     build_corpus,
@@ -24,9 +25,14 @@ def main():
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--prompt", default="Instruction: What is the capital of France?\nResponse:")
+    parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None)
     args = parser.parse_args()
 
+    device = resolve_device(args.device)
+    print(f"Using device: {device}")
+
     model = load_pretrained_model(args.checkpoint)
+    model.to(device)
     model_config = model.config
 
     with open(args.config) as f:
@@ -58,16 +64,18 @@ def main():
     train_dataset = TokenDataset(train_tokens, context_length=model_config.context_length)
     val_dataset = TokenDataset(val_tokens, context_length=model_config.context_length)
 
-    before = evaluate_model(model, val_dataset, batch_size=train_config.batch_size)
-    prompt_ids = torch.tensor([tokenizer.encode(args.prompt)])
+    before = evaluate_model(model, val_dataset, batch_size=train_config.batch_size, device=device)
+    prompt_ids = torch.tensor([tokenizer.encode(args.prompt)], device=device)
     before_text = tokenizer.decode(model.generate(prompt_ids, max_new_tokens=20)[0].tolist())
 
     print(f"before fine-tuning: val_loss={before['loss']:.4f} perplexity={before['perplexity']:.2f}")
     print(f"before fine-tuning generation:\n{before_text}\n")
 
-    result = train_model(model, train_dataset, val_dataset, train_config, tokenizer=tokenizer)
+    result = train_model(
+        model, train_dataset, val_dataset, train_config, device=device, tokenizer=tokenizer
+    )
 
-    after = evaluate_model(model, val_dataset, batch_size=train_config.batch_size)
+    after = evaluate_model(model, val_dataset, batch_size=train_config.batch_size, device=device)
     after_text = tokenizer.decode(model.generate(prompt_ids, max_new_tokens=20)[0].tolist())
 
     print(f"after fine-tuning: val_loss={after['loss']:.4f} perplexity={after['perplexity']:.2f}")

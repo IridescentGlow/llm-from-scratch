@@ -5,6 +5,7 @@ Usage: python scripts/generate.py --checkpoint checkpoints/latest.pt \
 """
 import argparse
 
+from llm_from_scratch.device import resolve_device
 from llm_from_scratch.finetune import load_pretrained_model, load_tokenizer_for_checkpoint
 from llm_from_scratch.generate import generate
 
@@ -15,7 +16,11 @@ def main():
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--max-new-tokens", type=int, default=50)
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None)
     args = parser.parse_args()
+
+    device = resolve_device(args.device)
+    print(f"Using device: {device}")
 
     model = load_pretrained_model(args.checkpoint)
 
@@ -30,6 +35,7 @@ def main():
         args.prompt,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
+        device=device,
     )
     print(text)
 

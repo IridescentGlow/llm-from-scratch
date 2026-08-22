@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
+from llm_from_scratch.device import resolve_device
 from llm_from_scratch.model import GPT
 from llm_from_scratch.tokenizer import BPETokenizer
 from llm_from_scratch.train import load_config, train_model
@@ -16,7 +17,11 @@ from llm_from_scratch.train import load_config, train_model
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None)
     args = parser.parse_args()
+
+    device = resolve_device(args.device)
+    print(f"Using device: {device}")
 
     model_config, train_config = load_config(args.config)
     with open(args.config) as f:
@@ -48,7 +53,9 @@ def main():
     model = GPT(model_config)
     print(f"Model has {sum(p.numel() for p in model.parameters()):,} parameters.")
 
-    result = train_model(model, train_dataset, val_dataset, train_config, tokenizer=tokenizer)
+    result = train_model(
+        model, train_dataset, val_dataset, train_config, device=device, tokenizer=tokenizer
+    )
     print(f"Checkpoint saved to {result['checkpoint_path']}")
     print(f"Tokenizer saved to {result['tokenizer_path']}")
 

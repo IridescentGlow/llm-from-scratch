@@ -9,6 +9,7 @@ import torch
 import yaml
 
 from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
+from llm_from_scratch.device import resolve_device
 from llm_from_scratch.eval import evaluate_model
 from llm_from_scratch.finetune import load_tokenizer_for_checkpoint
 from llm_from_scratch.model import GPT
@@ -18,9 +19,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--config", required=True)
+    parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None)
     args = parser.parse_args()
 
-    checkpoint = torch.load(args.checkpoint, weights_only=False)
+    device = resolve_device(args.device)
+    print(f"Using device: {device}")
+
+    # map_location="cpu" so a checkpoint saved from a GPU run still loads on
+    # a CPU-only machine -- see docs/device-support.md. evaluate_model moves
+    # the model to `device` itself.
+    checkpoint = torch.load(args.checkpoint, weights_only=False, map_location="cpu")
     model_config = checkpoint["model_config"]
     model = GPT(model_config)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -53,7 +61,9 @@ def main():
     _, val_tokens = train_val_split(all_tokens, data_config["train_split"])
     val_dataset = TokenDataset(val_tokens, context_length=model_config.context_length)
 
-    result = evaluate_model(model, val_dataset, batch_size=raw["train"]["batch_size"])
+    result = evaluate_model(
+        model, val_dataset, batch_size=raw["train"]["batch_size"], device=device
+    )
 
     print(f"val_loss:   {result['loss']:.4f}")
     print(f"perplexity: {result['perplexity']:.2f}")
