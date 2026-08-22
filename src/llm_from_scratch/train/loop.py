@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -148,6 +149,10 @@ def train_model(
     checkpoint_path = checkpoint_dir / "latest.pt"
 
     def save_checkpoint() -> Path:
+        # Write to a temp file first, then atomically rename it into place
+        # (os.replace) -- a crash mid-write leaves the old latest.pt intact
+        # instead of truncated. See docs/checkpoint-atomicity.md.
+        tmp_path = checkpoint_path.with_suffix(".pt.tmp")
         torch.save(
             {
                 "model_state_dict": model.state_dict(),
@@ -155,8 +160,9 @@ def train_model(
                 "optimizer_state_dict": optimizer.state_dict(),
                 "step": step + 1,
             },
-            checkpoint_path,
+            tmp_path,
         )
+        os.replace(tmp_path, checkpoint_path)
         return checkpoint_path
 
     train_losses: list[float] = []

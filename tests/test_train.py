@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pytest
 import torch
@@ -283,6 +285,61 @@ def test_checkpoint_written_periodically_not_only_at_end(tmp_path):
 
     assert seen_steps == [3, 6, 9, 10]
     assert checkpoint_path.exists()
+
+
+def test_checkpoint_save_leaves_no_tmp_file_behind(tmp_path):
+    """A successful save should end with only latest.pt on disk -- the temp
+    file used for the atomic rename must not linger as a permanent artifact.
+    """
+    model_config = _tiny_model_config()
+    train_config = _tiny_train_config(checkpoint_dir=str(tmp_path / "ckpt"))
+    model = GPT(model_config)
+    train_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length)
+    val_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length, length=80)
+
+    train_model(model, train_dataset, val_dataset, train_config, log_fn=lambda _msg: None)
+
+    ckpt_dir = tmp_path / "ckpt"
+    assert (ckpt_dir / "latest.pt").exists()
+    assert not (ckpt_dir / "latest.pt.tmp").exists()
+
+
+def test_checkpoint_survives_interrupted_write(tmp_path, monkeypatch):
+    """If the process is 'killed' after the temp file is written but before
+    os.replace runs, the previous latest.pt must remain intact and loadable
+    -- not truncated, not replaced by a half-written file.
+    """
+    model_config = _tiny_model_config()
+    train_config = _tiny_train_config(
+        max_steps=6, checkpoint_every=3, checkpoint_dir=str(tmp_path / "ckpt")
+    )
+    model = GPT(model_config)
+    train_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length)
+    val_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length, length=80)
+
+    import llm_from_scratch.train.loop as loop_module
+
+    call_count = {"n": 0}
+    orig_replace = os.replace
+
+    def _flaky_replace(src, dst):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            # simulate a crash between the temp-file write (already done)
+            # and the atomic rename that would publish it as latest.pt
+            raise OSError("simulated crash before os.replace completes")
+        return orig_replace(src, dst)
+
+    monkeypatch.setattr(loop_module.os, "replace", _flaky_replace)
+
+    with pytest.raises(OSError, match="simulated crash"):
+        train_model(model, train_dataset, val_dataset, train_config, log_fn=lambda _msg: None)
+
+    checkpoint_path = tmp_path / "ckpt" / "latest.pt"
+    assert checkpoint_path.exists()
+    # the first (successful) save was at step 3 -- it must still be intact
+    checkpoint = torch.load(checkpoint_path, weights_only=False)
+    assert checkpoint["step"] == 3
 
 
 def test_load_checkpoint_for_resume_missing_file_raises(tmp_path):
