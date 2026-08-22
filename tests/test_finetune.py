@@ -128,6 +128,7 @@ def test_finetuning_improves_loss_on_instruction_corpus(tmp_path):
         grad_clip=1.0,
         eval_every=100,
         checkpoint_dir=str(tmp_path / "finetuned"),
+        checkpoint_every=100,
     )
     result = train_model(model, dataset, dataset, finetune_config, log_fn=lambda _msg: None)
 

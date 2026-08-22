@@ -23,6 +23,7 @@ class TrainConfig:
     grad_clip: float
     eval_every: int
     checkpoint_dir: str
+    checkpoint_every: int
 
 
 def load_config(path: str | Path) -> tuple[GPTConfig, TrainConfig]:
@@ -38,6 +39,39 @@ def load_config(path: str | Path) -> tuple[GPTConfig, TrainConfig]:
     train_raw["learning_rate"] = float(train_raw["learning_rate"])
     train_config = TrainConfig(**train_raw)
     return model_config, train_config
+
+
+def load_checkpoint_for_resume(checkpoint_dir: str | Path, model_config: GPTConfig) -> dict:
+    """Load `latest.pt` for `--resume`, validating it's actually resumable.
+
+    Raises FileNotFoundError if no checkpoint exists at checkpoint_dir, and
+    ValueError if it's missing optimizer_state_dict/step (saved before this
+    milestone existed) or was saved with a different model_config -- either
+    would make resuming silently wrong rather than just inconvenient. See
+    docs/checkpoint-resume.md.
+    """
+    checkpoint_path = Path(checkpoint_dir) / "latest.pt"
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"--resume was given but no checkpoint found at {checkpoint_path}."
+        )
+    checkpoint = torch.load(checkpoint_path, weights_only=False, map_location="cpu")
+
+    missing = [k for k in ("optimizer_state_dict", "step") if k not in checkpoint]
+    if missing:
+        raise ValueError(
+            f"Checkpoint at {checkpoint_path} is missing {missing} -- it predates "
+            "mid-training checkpointing/resume support and cannot be resumed from. "
+            "See docs/checkpoint-resume.md."
+        )
+    if checkpoint["model_config"] != model_config:
+        raise ValueError(
+            f"Checkpoint at {checkpoint_path} was saved with model_config "
+            f"{checkpoint['model_config']}, which does not match the model_config "
+            f"passed in ({model_config}). Refusing to resume from a mismatched "
+            "architecture."
+        )
+    return checkpoint
 
 
 def get_lr(step: int, warmup_steps: int, base_lr: float) -> float:
@@ -77,8 +111,10 @@ def train_model(
     log_every: int = 1,
     log_fn: Callable[[str], None] = print,
     tokenizer: BPETokenizer | None = None,
+    start_step: int = 0,
+    optimizer_state_dict: dict | None = None,
 ) -> dict:
-    """Run the pretraining loop for `config.max_steps` steps.
+    """Run the pretraining loop from `start_step` to `config.max_steps`.
 
     One step = one batch: forward pass -> loss -> backward pass -> optimizer
     step, exactly as described in docs/04-pretraining.md. Returns a dict with
@@ -88,18 +124,44 @@ def train_model(
     checkpoint (see docs/01-tokenization.md, "Tokenizer persistence") so the
     checkpoint directory is a self-contained unit: weights + config +
     the exact tokenizer that produced this run's training data.
+
+    `start_step` and `optimizer_state_dict` support resuming mid-run (see
+    docs/checkpoint-resume.md): pass the values from
+    `load_checkpoint_for_resume` to continue the learning-rate schedule and
+    AdamW's per-weight momentum/variance from where a prior run left off,
+    instead of restarting both from scratch. `model` is expected to already
+    have the resumed weights loaded into it by the caller (mirroring how a
+    fresh `model` is already constructed by the caller too).
     """
     model.to(device)
     model.train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    if optimizer_state_dict is not None:
+        optimizer.load_state_dict(optimizer_state_dict)
 
     train_loader = get_dataloader(train_dataset, config.batch_size, shuffle=True)
     val_loader = get_dataloader(val_dataset, config.batch_size, shuffle=False)
     train_iter = iter(train_loader)
 
+    checkpoint_dir = Path(config.checkpoint_dir)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = checkpoint_dir / "latest.pt"
+
+    def save_checkpoint() -> Path:
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "model_config": model.config,
+                "optimizer_state_dict": optimizer.state_dict(),
+                "step": step + 1,
+            },
+            checkpoint_path,
+        )
+        return checkpoint_path
+
     train_losses: list[float] = []
 
-    for step in range(config.max_steps):
+    for step in range(start_step, config.max_steps):
         try:
             input_ids, target_ids = next(train_iter)
         except StopIteration:
@@ -128,13 +190,8 @@ def train_model(
                     f"train_loss={loss.item():.4f} val_loss={val_loss:.4f} lr={lr:.2e}"
                 )
 
-    checkpoint_dir = Path(config.checkpoint_dir)
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_path = checkpoint_dir / "latest.pt"
-    torch.save(
-        {"model_state_dict": model.state_dict(), "model_config": model.config},
-        checkpoint_path,
-    )
+        if (step + 1) % config.checkpoint_every == 0 or is_last_step:
+            save_checkpoint()
 
     result = {"train_losses": train_losses, "checkpoint_path": str(checkpoint_path)}
     if tokenizer is not None:

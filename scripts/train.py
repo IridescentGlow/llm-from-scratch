@@ -11,13 +11,21 @@ from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split,
 from llm_from_scratch.device import resolve_device
 from llm_from_scratch.model import GPT
 from llm_from_scratch.tokenizer import BPETokenizer
-from llm_from_scratch.train import load_config, train_model
+from llm_from_scratch.train import load_checkpoint_for_resume, load_config, train_model
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Resume from checkpoint_dir/latest.pt (model + optimizer state + "
+            "step) instead of starting a fresh run. See docs/checkpoint-resume.md."
+        ),
+    )
     args = parser.parse_args()
 
     device = resolve_device(args.device)
@@ -53,8 +61,24 @@ def main():
     model = GPT(model_config)
     print(f"Model has {sum(p.numel() for p in model.parameters()):,} parameters.")
 
+    start_step = 0
+    optimizer_state_dict = None
+    if args.resume:
+        checkpoint = load_checkpoint_for_resume(train_config.checkpoint_dir, model_config)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer_state_dict = checkpoint["optimizer_state_dict"]
+        start_step = checkpoint["step"]
+        print(f"Resuming from step {start_step}/{train_config.max_steps}")
+
     result = train_model(
-        model, train_dataset, val_dataset, train_config, device=device, tokenizer=tokenizer
+        model,
+        train_dataset,
+        val_dataset,
+        train_config,
+        device=device,
+        tokenizer=tokenizer,
+        start_step=start_step,
+        optimizer_state_dict=optimizer_state_dict,
     )
     print(f"Checkpoint saved to {result['checkpoint_path']}")
     print(f"Tokenizer saved to {result['tokenizer_path']}")

@@ -139,12 +139,13 @@ each time, and the loss number — on average — goes down.
 ## Simplification note
 
 Production training adds distributed training (many GPUs), mixed-
-precision (fp16/bf16) for speed, more sophisticated LR schedules (cosine
-decay after warmup, not just warmup), and resuming from checkpoints
-mid-run. We implement a single-device loop with linear warmup and a flat
-learning rate after, and start-of-run-only checkpointing at the end —
+precision (fp16/bf16) for speed, and more sophisticated LR schedules
+(cosine decay after warmup, not just warmup). We implement a
+single-device loop with linear warmup and a flat learning rate after —
 enough to watch loss fall and produce a usable checkpoint, not tuned for
-speed.
+speed. Periodic checkpointing and `--resume` (see
+docs/checkpoint-resume.md) are implemented; multi-GPU/distributed
+checkpointing is not.
 
 ## What we build here
 A plain PyTorch training loop with checkpointing, logging (loss/step,
@@ -187,3 +188,10 @@ its trained tokenizer through. This makes a checkpoint directory a
 self-contained unit (weights + config + the exact tokenizer used to
 produce its training data), which Stages 5–7 now rely on instead of
 retraining a tokenizer from the raw corpus each time.
+
+Update (mid-training checkpointing + resume milestone): see
+docs/checkpoint-resume.md for the full design and implementation status.
+`TrainConfig` gained `checkpoint_every`; `latest.pt` is now written
+periodically during the loop (not just at the end) and includes
+`optimizer_state_dict` and `step`; `train_model` gained `start_step`/
+`optimizer_state_dict` parameters; `scripts/train.py` gained `--resume`.

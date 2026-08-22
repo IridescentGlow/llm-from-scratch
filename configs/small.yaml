@@ -15,6 +15,7 @@ train:
   grad_clip: 1.0
   eval_every: 250
   checkpoint_dir: checkpoints/
+  checkpoint_every: 250
 
 data:
   raw_path: data/raw/

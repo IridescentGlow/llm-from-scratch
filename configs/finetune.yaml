@@ -8,6 +8,7 @@ train:
   grad_clip: 1.0
   eval_every: 50
   checkpoint_dir: checkpoints/finetuned/
+  checkpoint_every: 50
 
 data:
   examples_path: data/finetune/examples.jsonl
