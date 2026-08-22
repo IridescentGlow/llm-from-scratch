@@ -143,15 +143,25 @@ class GPT(nn.Module):
 
     @torch.no_grad()
     def generate(
-        self, idx: Tensor, max_new_tokens: int, temperature: float = 0.0
+        self,
+        idx: Tensor,
+        max_new_tokens: int,
+        temperature: float = 0.0,
+        eos_token_id: int | None = None,
     ) -> Tensor:
-        """Extend `idx` (batch, seq_len) by `max_new_tokens` tokens.
+        """Extend `idx` (batch, seq_len) by up to `max_new_tokens` tokens.
 
         At each step: truncate to the last `context_length` tokens, run a
         forward pass, and pick the next token from the last position's
         logits. `temperature <= 0` picks the highest-probability token
         (greedy, deterministic). `temperature > 0` divides logits by
         temperature, softmaxes, and samples from that distribution.
+
+        If `eos_token_id` is given and that id is produced, generation
+        stops immediately (before `max_new_tokens` if it happens sooner) --
+        see docs/eos-generation-stopping.md. `max_new_tokens` still applies
+        as a hard cap regardless: if EOS is never produced, generation runs
+        the full `max_new_tokens` exactly as when `eos_token_id` is None.
         """
         self.eval()
         for _ in range(max_new_tokens):
@@ -164,4 +174,6 @@ class GPT(nn.Module):
                 probs = F.softmax(next_token_logits / temperature, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
             idx = torch.cat([idx, next_token], dim=1)
+            if eos_token_id is not None and next_token.item() == eos_token_id:
+                break
         return idx

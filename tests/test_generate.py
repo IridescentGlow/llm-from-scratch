@@ -52,8 +52,8 @@ def test_generate_respects_max_new_tokens():
     original_generate = GPT.generate
     seen_shapes = []
 
-    def spy_generate(self, idx, max_new_tokens, temperature=0.0):
-        out = original_generate(self, idx, max_new_tokens, temperature)
+    def spy_generate(self, idx, max_new_tokens, temperature=0.0, eos_token_id=None):
+        out = original_generate(self, idx, max_new_tokens, temperature, eos_token_id)
         seen_shapes.append(out.shape)
         return out
 
@@ -73,6 +73,50 @@ def test_generate_truncates_long_prompt_to_context_length():
     text = generate(model, tokenizer, long_prompt, max_new_tokens=2)
 
     assert isinstance(text, str)
+
+
+def test_generate_passes_eos_token_id_through_to_model_generate():
+    """See docs/eos-generation-stopping.md: generate() must forward the
+    tokenizer's eos_token_id to GPT.generate so it can stop early.
+    """
+    config = _tiny_model_config()
+    model = GPT(config)
+    tokenizer = _tokenizer(config.vocab_size)
+    tokenizer.add_eos_token()
+
+    seen_eos_ids = []
+    original_generate = GPT.generate
+
+    def spy_generate(self, idx, max_new_tokens, temperature=0.0, eos_token_id=None):
+        seen_eos_ids.append(eos_token_id)
+        return original_generate(self, idx, max_new_tokens, temperature, eos_token_id)
+
+    model.generate = spy_generate.__get__(model, GPT)
+    generate(model, tokenizer, "hello", max_new_tokens=5)
+
+    assert seen_eos_ids == [tokenizer.eos_token_id]
+
+
+def test_generate_with_legacy_tokenizer_passes_no_eos_id():
+    """A tokenizer with no EOS token (legacy, pre-milestone) must not
+    invent one -- generate() passes None through, unchanged behavior.
+    """
+    config = _tiny_model_config()
+    model = GPT(config)
+    tokenizer = _tokenizer(config.vocab_size)
+    assert tokenizer.eos_token_id is None
+
+    seen_eos_ids = []
+    original_generate = GPT.generate
+
+    def spy_generate(self, idx, max_new_tokens, temperature=0.0, eos_token_id=None):
+        seen_eos_ids.append(eos_token_id)
+        return original_generate(self, idx, max_new_tokens, temperature, eos_token_id)
+
+    model.generate = spy_generate.__get__(model, GPT)
+    generate(model, tokenizer, "hello", max_new_tokens=5)
+
+    assert seen_eos_ids == [None]
 
 
 def test_generate_reuses_load_pretrained_model(tmp_path):

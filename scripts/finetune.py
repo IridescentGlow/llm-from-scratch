@@ -12,7 +12,7 @@ from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split,
 from llm_from_scratch.device import resolve_device
 from llm_from_scratch.eval import evaluate_model
 from llm_from_scratch.finetune import (
-    build_corpus,
+    build_token_ids,
     load_examples_jsonl,
     load_pretrained_model,
     load_tokenizer_for_checkpoint,
@@ -43,7 +43,6 @@ def main():
     data_config = raw["data"]
 
     examples = load_examples_jsonl(data_config["examples_path"])
-    corpus = build_corpus(examples)
 
     # Load the exact tokenizer this checkpoint was pretrained with -- do NOT
     # retrain a new one on the (small, differently-distributed) fine-tuning
@@ -52,7 +51,10 @@ def main():
     # docs/01-tokenization.md, "Tokenizer persistence", and
     # docs/06-finetuning.md).
     tokenizer = load_tokenizer_for_checkpoint(args.checkpoint)
-    token_ids = tokenizer.encode(corpus)
+    # Encodes each example separately and appends EOS after each response --
+    # raises clearly if this checkpoint's tokenizer has no EOS token. See
+    # docs/eos-generation-stopping.md.
+    token_ids = build_token_ids(examples, tokenizer)
 
     processed_path = Path(data_config["processed_path"])
     processed_path.mkdir(parents=True, exist_ok=True)
@@ -66,7 +68,9 @@ def main():
 
     before = evaluate_model(model, val_dataset, batch_size=train_config.batch_size, device=device)
     prompt_ids = torch.tensor([tokenizer.encode(args.prompt)], device=device)
-    before_text = tokenizer.decode(model.generate(prompt_ids, max_new_tokens=20)[0].tolist())
+    before_text = tokenizer.decode(
+        model.generate(prompt_ids, max_new_tokens=20, eos_token_id=tokenizer.eos_token_id)[0].tolist()
+    )
 
     print(f"before fine-tuning: val_loss={before['loss']:.4f} perplexity={before['perplexity']:.2f}")
     print(f"before fine-tuning generation:\n{before_text}\n")
@@ -76,7 +80,9 @@ def main():
     )
 
     after = evaluate_model(model, val_dataset, batch_size=train_config.batch_size, device=device)
-    after_text = tokenizer.decode(model.generate(prompt_ids, max_new_tokens=20)[0].tolist())
+    after_text = tokenizer.decode(
+        model.generate(prompt_ids, max_new_tokens=20, eos_token_id=tokenizer.eos_token_id)[0].tolist()
+    )
 
     print(f"after fine-tuning: val_loss={after['loss']:.4f} perplexity={after['perplexity']:.2f}")
     print(f"after fine-tuning generation:\n{after_text}\n")

@@ -23,10 +23,17 @@ class BPETokenizer:
         self.merges: dict[Pair, int] = {}
         # vocab: token id -> the raw bytes it represents.
         self.vocab: dict[int, bytes] = {i: bytes([i]) for i in range(256)}
+        # special_tokens: name -> id, for tokens with no underlying bytes
+        # (e.g. "eos"). See docs/eos-generation-stopping.md.
+        self.special_tokens: dict[str, int] = {}
 
     @property
     def vocab_size(self) -> int:
-        return len(self.vocab)
+        return len(self.vocab) + len(self.special_tokens)
+
+    @property
+    def eos_token_id(self) -> int | None:
+        return self.special_tokens.get("eos")
 
     def train(self, corpus: str, vocab_size: int) -> None:
         """Learn merges from `corpus` until the vocabulary reaches `vocab_size`.
@@ -41,6 +48,7 @@ class BPETokenizer:
 
         self.merges = {}
         self.vocab = {i: bytes([i]) for i in range(256)}
+        self.special_tokens = {}
 
         for i in range(num_merges):
             pair_counts = self._count_pairs(ids)
@@ -52,6 +60,23 @@ class BPETokenizer:
             self.merges[best_pair] = new_id
             self.vocab[new_id] = self.vocab[best_pair[0]] + self.vocab[best_pair[1]]
             ids = self._merge(ids, best_pair, new_id)
+
+    def add_eos_token(self) -> int:
+        """Reserve an id meaning "end of sequence" and return it.
+
+        See docs/eos-generation-stopping.md. Unlike every other token, this
+        id has no corresponding bytes -- it's never produced by encode() on
+        real text, and decode() skips it rather than looking up bytes for
+        it. The id is the next unused integer (current vocab_size), fixed
+        for this tokenizer instance from here on. Call once, right after
+        train(), before saving -- calling it twice would silently reassign
+        the id future code has already started relying on.
+        """
+        if "eos" in self.special_tokens:
+            raise ValueError("EOS token already added to this tokenizer.")
+        eos_id = self.vocab_size
+        self.special_tokens["eos"] = eos_id
+        return eos_id
 
     def encode(self, text: str) -> list[int]:
         """Encode text into a list of token ids."""
@@ -71,13 +96,17 @@ class BPETokenizer:
     def decode(self, ids: list[int]) -> str:
         """Decode a list of token ids back into text.
 
+        Special-token ids (e.g. EOS) have no underlying bytes, so they're
+        skipped rather than looked up -- see docs/eos-generation-stopping.md.
+
         `errors="replace"` because generation (Stage 7) can produce raw byte
         tokens that aren't valid UTF-8 on their own -- a real model gets
         better at avoiding this with training, but decode must not crash on
         an untrained or unlucky sequence. Encoded text always round-trips
         exactly regardless, since it never contains invalid byte sequences.
         """
-        raw = b"".join(self.vocab[i] for i in ids)
+        special_ids = set(self.special_tokens.values())
+        raw = b"".join(self.vocab[i] for i in ids if i not in special_ids)
         return raw.decode("utf-8", errors="replace")
 
     def save(self, path: str | Path) -> None:
@@ -96,9 +125,7 @@ class BPETokenizer:
                 str(token_id): base64.b64encode(token_bytes).decode("ascii")
                 for token_id, token_bytes in self.vocab.items()
             },
-            # Reserved for future additions (e.g. an end-of-text token) so
-            # they don't require a second, incompatible file format.
-            "special_tokens": {},
+            "special_tokens": dict(self.special_tokens),
         }
         with open(path, "w") as f:
             json.dump(data, f)
@@ -114,6 +141,10 @@ class BPETokenizer:
             int(token_id): base64.b64decode(encoded)
             for token_id, encoded in data["vocab"].items()
         }
+        # .get(...) with a default: files saved before this milestone have
+        # no populated special_tokens key (always an empty dict), which is
+        # exactly the legacy case this defaults to.
+        tokenizer.special_tokens = dict(data.get("special_tokens", {}))
         return tokenizer
 
     @staticmethod

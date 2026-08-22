@@ -93,12 +93,13 @@ model's top guess versus giving other options a chance.
 
 ## Why `max_new_tokens` exists
 
-The generation loop has no natural stopping point on its own — nothing
-tells it "the sentence is done." (Real instruction-tuned models are
-typically trained to emit a special end-of-text token to signal that; this
-project's fine-tuning stage doesn't add one — see the limitations note
-below.) `max_new_tokens` is a hard cap: generate exactly this many tokens,
-then stop. It's a simple, explicit substitute for "know when to stop."
+The generation loop has no natural stopping point of its own — nothing
+tells it "the sentence is done," unless it's given an explicit end-of-
+sequence (EOS) token to watch for (see docs/eos-generation-stopping.md,
+added after this stage). `max_new_tokens` is a hard cap either way:
+generate at most this many tokens, then stop regardless. It's a simple,
+explicit substitute for "know when to stop" that still applies even when
+EOS is available, in case the model never produces it.
 
 ## Why the model's context length matters during generation
 
@@ -169,13 +170,15 @@ producing a different continuation from the same prompt.
 ## Simplification note
 
 Production inference systems typically add: an end-of-text token so
-generation can stop itself instead of relying on a fixed
-`max_new_tokens`, top-k / top-p (nucleus) sampling to restrict sampling to
+generation can stop itself instead of relying only on a fixed
+`max_new_tokens` (implemented — see docs/eos-generation-stopping.md, added
+after this stage), top-k / top-p (nucleus) sampling to restrict sampling to
 only the most plausible tokens (avoiding the very long tail temperature
 alone can still pick from), repetition penalties, beam search, and batched
-KV-caching for speed. We implement only greedy decoding and temperature
-sampling — enough to see generation work and to see what temperature does
-— and skip the rest to keep the loop easy to read end to end.
+KV-caching for speed. We implement greedy decoding, temperature sampling,
+and EOS-based stopping — enough to see generation work and to see what
+temperature does — and skip the rest to keep the loop easy to read end to
+end.
 
 ## What we build here
 
@@ -263,3 +266,14 @@ much larger pretraining run to assess meaningfully (same caveat as Stage
 
 Next: none — Stage 7 implemented and tested. No further stages planned in
 `docs/00-roadmap.md` as of this session.
+
+Update (EOS / generation stopping milestone): `GPT.generate` gained an
+optional `eos_token_id` parameter — generation now stops the moment that id
+is produced, before `max_new_tokens` if it happens sooner. `generate()`
+(`src/llm_from_scratch/generate/inference.py`) passes the tokenizer's
+`eos_token_id` through automatically; a tokenizer with no EOS (any
+checkpoint predating this milestone) passes `None`, reproducing the exact
+prior fixed-length behavior with no error. See
+docs/eos-generation-stopping.md for the full design and the "Simplification
+note" above, which is now partially resolved (the end-of-text token
+described there as production-only now exists here too).

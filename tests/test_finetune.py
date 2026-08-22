@@ -9,6 +9,7 @@ from llm_from_scratch.eval import evaluate_model
 from llm_from_scratch.finetune import (
     InstructionExample,
     build_corpus,
+    build_token_ids,
     format_example,
     load_examples_jsonl,
     load_pretrained_model,
@@ -104,6 +105,39 @@ def test_load_tokenizer_for_checkpoint_raises_clear_error_when_missing(tmp_path)
 
     with pytest.raises(FileNotFoundError, match="predates tokenizer persistence"):
         load_tokenizer_for_checkpoint(checkpoint_path)
+
+
+def test_build_token_ids_appends_eos_after_each_example():
+    tokenizer = BPETokenizer()
+    tokenizer.train("Instruction: A?\nResponse: a.\nInstruction: B?\nResponse: b.\n", vocab_size=260)
+    tokenizer.add_eos_token()
+    examples = [
+        InstructionExample(instruction="A?", response="a."),
+        InstructionExample(instruction="B?", response="b."),
+    ]
+
+    token_ids = build_token_ids(examples, tokenizer)
+
+    expected = (
+        tokenizer.encode(format_example(examples[0]))
+        + [tokenizer.eos_token_id]
+        + tokenizer.encode(format_example(examples[1]))
+        + [tokenizer.eos_token_id]
+    )
+    assert token_ids == expected
+
+
+def test_build_token_ids_raises_clearly_when_tokenizer_has_no_eos():
+    """See docs/eos-generation-stopping.md: fine-tuning against a checkpoint
+    whose tokenizer predates EOS must fail loudly, not silently proceed
+    without ever teaching the model to stop.
+    """
+    tokenizer = BPETokenizer()
+    tokenizer.train("Instruction: A?\nResponse: a.\n", vocab_size=260)
+    examples = [InstructionExample(instruction="A?", response="a.")]
+
+    with pytest.raises(ValueError, match="no EOS token"):
+        build_token_ids(examples, tokenizer)
 
 
 def test_finetuning_improves_loss_on_instruction_corpus(tmp_path):

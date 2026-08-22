@@ -125,3 +125,35 @@ def test_generate_temperature_sampling_produces_valid_token_ids():
     assert torch.equal(out[:, :3], idx)  # original tokens preserved
     assert out.min() >= 0
     assert out.max() < config.vocab_size
+
+
+def test_generate_stops_early_when_eos_is_produced():
+    """See docs/eos-generation-stopping.md: generation must stop the moment
+    eos_token_id is produced, before max_new_tokens is reached.
+
+    Greedy decoding is deterministic, so the token the untrained model picks
+    first (with no eos_token_id given) is exactly the token it will pick
+    first again given the same prompt -- used here as a stand-in "eos" id
+    to force an early stop without needing a trained model.
+    """
+    config = _tiny_config()
+    model = GPT(config)
+    idx = torch.randint(0, config.vocab_size, (1, 3))
+
+    first_token = model.generate(idx, max_new_tokens=1, temperature=0.0)[0, -1].item()
+
+    out = model.generate(idx, max_new_tokens=10, temperature=0.0, eos_token_id=first_token)
+
+    assert out.shape == (1, 3 + 1)  # stopped right after producing eos, not after 10 more
+    assert out[0, -1].item() == first_token
+
+
+def test_generate_runs_full_max_new_tokens_when_eos_never_appears():
+    """max_new_tokens remains a hard cap when eos_token_id is never produced."""
+    config = _tiny_config()
+    model = GPT(config)
+    idx = torch.randint(0, config.vocab_size, (1, 3))
+
+    out = model.generate(idx, max_new_tokens=5, temperature=0.0, eos_token_id=-1)
+
+    assert out.shape == (1, 3 + 5)

@@ -211,3 +211,14 @@ As documented above, this implementation does not mask the loss on
 instruction tokens (production instruction-tuning usually does) — it
 trains on the whole formatted instruction+response text as one
 continuous sequence, reusing Stage 2's `TokenDataset` unchanged.
+
+Update (EOS / generation stopping milestone): fine-tuning data is no longer
+built by concatenating raw formatted text and tokenizing once.
+`build_token_ids` (`src/llm_from_scratch/finetune/data.py`) encodes each
+example separately and appends the checkpoint's EOS token id after each
+one, so the model learns to stop right after a complete response, not just
+at the very end of the whole corpus. This requires the pretrained
+checkpoint's tokenizer to have an EOS token; fine-tuning against a
+checkpoint that predates EOS now fails immediately with a clear error
+instead of silently fine-tuning without any stopping signal. See
+docs/eos-generation-stopping.md.

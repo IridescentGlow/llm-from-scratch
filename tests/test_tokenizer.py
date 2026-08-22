@@ -1,3 +1,5 @@
+import pytest
+
 from llm_from_scratch.tokenizer import BPETokenizer
 
 CORPUS = "low lower lowest low lower newest widest low lower newer"
@@ -59,6 +61,62 @@ def test_save_load_preserves_merges_and_vocab(tmp_path):
     assert loaded.merges == tok.merges
     assert loaded.vocab == tok.vocab
     assert loaded.vocab_size == tok.vocab_size
+
+
+def test_add_eos_token_assigns_next_unused_id():
+    tok = _trained_tokenizer(vocab_size=280)
+    eos_id = tok.add_eos_token()
+
+    assert eos_id == 280
+    assert tok.eos_token_id == 280
+    assert tok.vocab_size == 281  # 280 base+merges, +1 reserved EOS slot
+
+
+def test_add_eos_token_twice_raises():
+    tok = _trained_tokenizer(vocab_size=280)
+    tok.add_eos_token()
+
+    with pytest.raises(ValueError, match="already"):
+        tok.add_eos_token()
+
+
+def test_tokenizer_without_eos_has_no_eos_token_id():
+    tok = _trained_tokenizer(vocab_size=280)
+    assert tok.eos_token_id is None
+
+
+def test_decode_skips_eos_id():
+    tok = _trained_tokenizer(vocab_size=280)
+    eos_id = tok.add_eos_token()
+    ids = tok.encode("lowest") + [eos_id]
+
+    assert tok.decode(ids) == "lowest"
+
+
+def test_save_load_preserves_eos_token(tmp_path):
+    tok = _trained_tokenizer(vocab_size=280)
+    tok.add_eos_token()
+    path = tmp_path / "tokenizer.json"
+    tok.save(path)
+
+    loaded = BPETokenizer.load(path)
+
+    assert loaded.eos_token_id == tok.eos_token_id
+    assert loaded.vocab_size == tok.vocab_size
+
+
+def test_load_legacy_tokenizer_without_special_tokens_key(tmp_path):
+    """A tokenizer.json saved before this milestone still has the always-empty
+    special_tokens key (added by the tokenizer persistence milestone), so
+    this covers that exact legacy shape -- no eos_token_id, no error.
+    """
+    tok = _trained_tokenizer(vocab_size=280)
+    path = tmp_path / "tokenizer.json"
+    tok.save(path)
+
+    loaded = BPETokenizer.load(path)
+
+    assert loaded.eos_token_id is None
 
 
 def test_save_load_preserves_encode_decode_behavior(tmp_path):

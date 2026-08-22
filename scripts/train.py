@@ -46,6 +46,11 @@ def main():
     print(f"Training tokenizer on {len(corpus):,} characters...")
     tokenizer = BPETokenizer()
     tokenizer.train(corpus, vocab_size=model_config.vocab_size)
+    tokenizer.add_eos_token()
+    # The model's vocab_size must include the reserved EOS row -- it can
+    # only be added at pretraining time, before the embedding table is
+    # built. See docs/eos-generation-stopping.md.
+    model_config.vocab_size = tokenizer.vocab_size
 
     processed_path = Path(data_config["processed_path"])
     processed_path.mkdir(parents=True, exist_ok=True)

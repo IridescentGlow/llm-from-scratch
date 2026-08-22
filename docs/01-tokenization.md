@@ -211,11 +211,9 @@ Three things fully define a trained `BPETokenizer`:
    This is what `encode()` needs: it must re-apply merges in the same
    order they were learned, or a piece of text can encode to a different
    sequence of ids than it did at training time.
-3. **Special-token metadata** — none exist yet in this project (no
-   `<eos>`/`<pad>`/`<unk>` — see the simplification note above), but the
-   save format should have a place for them so a future addition (e.g. an
-   end-of-text token for Stage 7-style generation) doesn't require a
-   second, incompatible file format. An empty dict is fine for now.
+3. **Special-token metadata** — an end-of-sequence (EOS) token now exists
+   (see docs/eos-generation-stopping.md); this is the field that reserved
+   its slot ahead of time. No `<pad>`/`<unk>` yet.
 
 Both `vocab` and `merges` are fully determined by each other plus the
 base 256 byte vocabulary (`vocab[256 + i]` is always
@@ -347,3 +345,10 @@ above, rather than silently retraining.
 algorithm above exactly (no regex pre-tokenization yet — see the
 simplification note). Tests in `tests/test_tokenizer.py` cover training,
 encoding, and lossless round-trip on both ASCII and non-ASCII text.
+
+Update (EOS / generation stopping milestone): the `special_tokens` slot
+described above is now actually populated. `BPETokenizer.add_eos_token()`
+reserves an id for "end of sequence," saved and loaded like everything else
+in `tokenizer.json`. See docs/eos-generation-stopping.md for the full
+design, why it must be decided at pretraining time (not fine-tuning time),
+and how it interacts with fine-tuning and generation.
