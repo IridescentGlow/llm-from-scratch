@@ -8,11 +8,18 @@ from pathlib import Path
 import torch
 import yaml
 
-from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
+from llm_from_scratch.data import (
+    TokenDataset,
+    load_loss_mask,
+    load_token_ids,
+    train_val_split,
+    write_loss_mask,
+    write_token_ids,
+)
 from llm_from_scratch.device import resolve_device
 from llm_from_scratch.eval import evaluate_model
 from llm_from_scratch.finetune import (
-    build_token_ids,
+    build_masked_token_ids,
     load_examples_jsonl,
     load_pretrained_model,
     load_tokenizer_for_checkpoint,
@@ -65,20 +72,30 @@ def main():
     # docs/01-tokenization.md, "Tokenizer persistence", and
     # docs/06-finetuning.md).
     tokenizer = load_tokenizer_for_checkpoint(args.checkpoint)
-    # Encodes each example separately and appends EOS after each response --
-    # raises clearly if this checkpoint's tokenizer has no EOS token. See
-    # docs/eos-generation-stopping.md.
-    token_ids = build_token_ids(examples, tokenizer)
+    # Encodes each example separately, appends EOS after each response, and
+    # builds a same-length loss mask (False for prompt tokens, True for
+    # response tokens and EOS) -- raises clearly if this checkpoint's
+    # tokenizer has no EOS token. See docs/eos-generation-stopping.md and
+    # docs/finetune-loss-masking.md.
+    token_ids, loss_mask = build_masked_token_ids(examples, tokenizer)
 
     processed_path = Path(data_config["processed_path"])
     processed_path.mkdir(parents=True, exist_ok=True)
     tokens_path = processed_path / "tokens.bin"
+    mask_path = processed_path / "loss_mask.bin"
     write_token_ids(token_ids, tokens_path)
+    write_loss_mask(loss_mask, mask_path)
     all_tokens = load_token_ids(tokens_path)
+    all_mask = load_loss_mask(mask_path)
 
     train_tokens, val_tokens = train_val_split(all_tokens, data_config["train_split"])
-    train_dataset = TokenDataset(train_tokens, context_length=model_config.context_length)
-    val_dataset = TokenDataset(val_tokens, context_length=model_config.context_length)
+    train_mask, val_mask = train_val_split(all_mask, data_config["train_split"])
+    train_dataset = TokenDataset(
+        train_tokens, context_length=model_config.context_length, loss_mask=train_mask
+    )
+    val_dataset = TokenDataset(
+        val_tokens, context_length=model_config.context_length, loss_mask=val_mask
+    )
 
     before = evaluate_model(model, val_dataset, batch_size=train_config.batch_size, device=device)
     prompt_ids = torch.tensor([tokenizer.encode(args.prompt)], device=device)

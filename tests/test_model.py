@@ -49,6 +49,64 @@ def test_forward_with_targets_returns_scalar_loss():
     assert loss.item() > 0
 
 
+def test_forward_ignores_target_positions_set_to_minus_100():
+    """GPT.forward makes no special provision for masking -- it relies on
+    F.cross_entropy's default ignore_index=-100. This is the mechanism
+    docs/finetune-loss-masking.md's response-only masking depends on: a
+    target position set to -100 must contribute zero loss and zero
+    gradient, with no change to the model or the forward() call. Confirmed
+    directly here, independent of the fine-tuning data pipeline."""
+    config = _tiny_config()
+    model = GPT(config)
+    idx = torch.randint(0, config.vocab_size, (1, 5))
+    targets = torch.randint(0, config.vocab_size, (1, 5))
+
+    # loss over only the unmasked (last 2) positions, computed by hand
+    logits, _ = model(idx)
+    unmasked_manual_loss = torch.nn.functional.cross_entropy(
+        logits[:, -2:, :].reshape(-1, config.vocab_size), targets[:, -2:].reshape(-1)
+    )
+
+    masked_targets = targets.clone()
+    masked_targets[:, :3] = -100
+    _, masked_loss = model(idx, masked_targets)
+
+    assert torch.allclose(masked_loss, unmasked_manual_loss, atol=1e-6)
+
+    # gradient check: masking a position must zero out its contribution to
+    # the backward pass, not just the forward-pass number.
+    model.zero_grad()
+    masked_loss.backward()
+    grad_masked = {name: p.grad.clone() for name, p in model.named_parameters()}
+
+    model.zero_grad()
+    _, full_loss = model(idx, targets)
+    full_loss.backward()
+    grad_full = {name: p.grad.clone() for name, p in model.named_parameters()}
+
+    # the two gradients differ (masking changes what's trained on) -- this
+    # isn't a no-op
+    assert any(
+        not torch.allclose(grad_masked[name], grad_full[name]) for name in grad_masked
+    )
+
+
+def test_forward_all_targets_masked_gives_nan_loss_like_bare_cross_entropy():
+    """If every target position is masked (e.g. a degenerate example with
+    an empty response), cross_entropy has nothing to average over and
+    returns nan -- this is F.cross_entropy's own documented behavior for
+    an all-ignored batch, not something this project needs to handle
+    specially."""
+    config = _tiny_config()
+    model = GPT(config)
+    idx = torch.randint(0, config.vocab_size, (1, 5))
+    targets = torch.full((1, 5), -100)
+
+    _, loss = model(idx, targets)
+
+    assert torch.isnan(loss)
+
+
 def test_forward_rejects_sequence_longer_than_context_length():
     config = _tiny_config(context_length=4)
     model = GPT(config)

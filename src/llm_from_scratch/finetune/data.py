@@ -59,6 +59,55 @@ def build_token_ids(examples: list[InstructionExample], tokenizer: BPETokenizer)
     return token_ids
 
 
+def _prompt_prefix(example: InstructionExample) -> str:
+    """The part of `format_example`'s output that's given, not generated --
+    everything up to and including the `Response: ` label. See
+    docs/finetune-loss-masking.md."""
+    return f"Instruction: {example.instruction}\nResponse: "
+
+
+def build_masked_token_ids(
+    examples: list[InstructionExample], tokenizer: BPETokenizer
+) -> tuple[list[int], list[bool]]:
+    """Like `build_token_ids`, but also returns a same-length loss mask:
+    False for prompt tokens, True for response tokens and EOS.
+
+    See docs/finetune-loss-masking.md for the full design and worked
+    example. Per example, the prompt/response split point is found by
+    encoding the prompt prefix on its own and taking `len(encode(prefix))`
+    as the boundary -- this project's word-boundary pretokenization means
+    the prefix's tokens come out the same whether encoded alone or as the
+    start of the full formatted string in practice, though this isn't
+    guaranteed for every possible tokenizer/string combination (documented
+    limitation, not a silent assumption).
+
+    Raises ValueError if `tokenizer` has no EOS token, same as
+    `build_token_ids`.
+    """
+    if tokenizer.eos_token_id is None:
+        raise ValueError(
+            "This checkpoint's tokenizer has no EOS token, so fine-tuning "
+            "can't teach the model when to stop (see "
+            "docs/eos-generation-stopping.md). Pretrain a new checkpoint "
+            "with the current scripts/train.py, which adds one, then "
+            "fine-tune from that instead."
+        )
+    token_ids: list[int] = []
+    loss_mask: list[bool] = []
+    for example in examples:
+        prefix_ids = tokenizer.encode(_prompt_prefix(example))
+        full_ids = tokenizer.encode(format_example(example))
+        prefix_len = len(prefix_ids)
+
+        token_ids.extend(full_ids)
+        loss_mask.extend([False] * prefix_len)
+        loss_mask.extend([True] * (len(full_ids) - prefix_len))
+
+        token_ids.append(tokenizer.eos_token_id)
+        loss_mask.append(True)
+    return token_ids, loss_mask
+
+
 def load_examples_jsonl(path: str | Path) -> list[InstructionExample]:
     """Load instruction/response pairs from a JSONL file (one {"instruction", "response"} per line)."""
     examples = []

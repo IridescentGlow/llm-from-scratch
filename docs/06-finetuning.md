@@ -117,18 +117,22 @@ the target is "the next actual token." No special masking, no separate
 input/target-shift-by-one construction Stage 2 already built, applied to
 instruction-formatted text instead of raw prose.
 
-## Simplification note
+## Response-only loss masking
 
-Production instruction-tuning usually **masks the loss on the prompt
-tokens** — the model only gets penalized for mispredicting the response,
-not the instruction text, since the instruction is given, not generated.
-That requires a per-example dataset (not a single sliding window over
-concatenated text) and a masked loss. We skip that here to keep reusing
-Stage 2's `TokenDataset` and Stage 4's `train_model` completely unchanged;
-the model still learns to produce reasonable responses, just from a
-slightly noisier signal (it's also "graded" on how well it reproduces the
-instruction text, not only the response). This is a real difference from
-production instruction-tuning, not a hidden bug.
+Update (response-only loss masking milestone): the simplification
+described above — training on the whole instruction+response text with no
+masking — is no longer true. Prompt tokens are now excluded from the
+loss; only response tokens and EOS supervise training. See
+`docs/finetune-loss-masking.md` for the full design and a worked example.
+The short version: PyTorch's `F.cross_entropy` already skips any target
+position set to its default `ignore_index` (`-100`) — `GPT.forward`
+needed no changes at all. `build_masked_token_ids`
+(`src/llm_from_scratch/finetune/data.py`) builds a same-length loss-mask
+array alongside the token ids (prompt tokens `False`, response tokens and
+EOS `True`); `TokenDataset` (`src/llm_from_scratch/data/dataset.py`)
+gained an optional `loss_mask` parameter that turns `False` positions
+into `-100` targets during windowing. Pretraining and evaluation of
+pretrained checkpoints are unaffected (`loss_mask` defaults to `None`).
 
 ## What we build here
 
@@ -207,10 +211,9 @@ pretraining-time tokenizer — confirmed by a manual smoke test showing the
 fine-tuned checkpoint's `tokenizer.json` is byte-identical to the
 pretrained one's.
 
-As documented above, this implementation does not mask the loss on
-instruction tokens (production instruction-tuning usually does) — it
-trains on the whole formatted instruction+response text as one
-continuous sequence, reusing Stage 2's `TokenDataset` unchanged.
+Update (response-only loss masking milestone): the paragraph above no
+longer describes current behavior — see "Response-only loss masking,"
+above, and `docs/finetune-loss-masking.md`.
 
 Update (EOS / generation stopping milestone): fine-tuning data is no longer
 built by concatenating raw formatted text and tokenizing once.

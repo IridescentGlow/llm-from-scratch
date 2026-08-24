@@ -5,8 +5,10 @@ import torch
 from llm_from_scratch.data import (
     TokenDataset,
     get_dataloader,
+    load_loss_mask,
     load_token_ids,
     train_val_split,
+    write_loss_mask,
     write_token_ids,
 )
 
@@ -105,3 +107,41 @@ def test_memmap_backed_dataset_windows_correctly(tmp_path):
     input_ids, target_ids = dataset[2]
     assert input_ids.tolist() == [2, 3, 4, 5]
     assert target_ids.tolist() == [3, 4, 5, 6]
+
+
+def test_loss_mask_none_leaves_targets_unchanged():
+    """Default loss_mask=None must be exactly today's pretraining/eval
+    behavior -- no -100 anywhere. See docs/finetune-loss-masking.md."""
+    dataset = TokenDataset(np.array(TOKEN_STREAM), context_length=CONTEXT_LENGTH)
+    _, target_ids = dataset[0]
+    assert -100 not in target_ids.tolist()
+    assert target_ids.tolist() == [1, 2, 3, 4]
+
+
+def test_loss_mask_marks_masked_targets_as_ignore_index():
+    """False positions become target -100 -- F.cross_entropy's default
+    ignore_index, so they contribute no loss/gradient with no model change
+    needed. See docs/finetune-loss-masking.md."""
+    mask = np.array([False, False, True, True, True, True, True, True, True, True] * 2)
+    dataset = TokenDataset(np.array(TOKEN_STREAM), context_length=CONTEXT_LENGTH, loss_mask=mask)
+
+    input_ids, target_ids = dataset[0]
+    # target_ids correspond to token positions 1,2,3,4 -> mask[1:5] = [False, True, True, True]
+    assert input_ids.tolist() == [0, 1, 2, 3]
+    assert target_ids.tolist() == [-100, 2, 3, 4]
+
+
+def test_loss_mask_length_mismatch_raises():
+    with pytest.raises(ValueError):
+        TokenDataset(
+            np.array(TOKEN_STREAM), context_length=CONTEXT_LENGTH, loss_mask=np.array([True, False])
+        )
+
+
+def test_loss_mask_persistence_roundtrip(tmp_path):
+    mask = [True, False, False, True, True]
+    path = tmp_path / "loss_mask.bin"
+    write_loss_mask(mask, path)
+
+    loaded = load_loss_mask(path)
+    assert loaded.tolist() == [1, 0, 0, 1, 1]

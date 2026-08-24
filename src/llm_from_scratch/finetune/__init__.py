@@ -8,6 +8,7 @@ from .checkpoint import load_pretrained_model, load_tokenizer_for_checkpoint
 from .data import (
     InstructionExample,
     build_corpus,
+    build_masked_token_ids,
     build_token_ids,
     format_example,
     load_examples_jsonl,
@@ -16,6 +17,7 @@ from .data import (
 __all__ = [
     "InstructionExample",
     "build_corpus",
+    "build_masked_token_ids",
     "build_token_ids",
     "format_example",
     "load_examples_jsonl",

@@ -10,6 +10,10 @@ import numpy as np
 # under that (configs/small.yaml uses 8000), and it halves storage vs int32.
 TOKEN_DTYPE = np.uint16
 
+# A loss mask only ever needs 0/1, so a single byte per position is enough --
+# no need for TOKEN_DTYPE's range. See docs/finetune-loss-masking.md.
+MASK_DTYPE = np.uint8
+
 
 def write_token_ids(token_ids: list[int], path: str | Path) -> None:
     """Write token ids to `path` as a flat binary file of TOKEN_DTYPE integers."""
@@ -24,6 +28,19 @@ def load_token_ids(path: str | Path) -> np.memmap:
     demand instead of loading the whole file into RAM.
     """
     return np.memmap(path, dtype=TOKEN_DTYPE, mode="r")
+
+
+def write_loss_mask(loss_mask: list[bool], path: str | Path) -> None:
+    """Write a loss mask to `path`, aligned position-for-position with a
+    token id file written by `write_token_ids`. See
+    docs/finetune-loss-masking.md."""
+    array = np.array(loss_mask, dtype=MASK_DTYPE)
+    array.tofile(path)
+
+
+def load_loss_mask(path: str | Path) -> np.memmap:
+    """Memory-map a loss mask file written by `write_loss_mask`."""
+    return np.memmap(path, dtype=MASK_DTYPE, mode="r")
 
 
 def train_val_split(
