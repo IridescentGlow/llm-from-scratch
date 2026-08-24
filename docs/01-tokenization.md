@@ -106,10 +106,12 @@ that's the whole point.
 Real GPT-style tokenizers (e.g. GPT-2/GPT-4's `tiktoken`) add pre-tokenization
 rules — regex splitting on whitespace/punctuation before BPE runs — so
 merges never cross word boundaries in weird ways, and they use a fixed
-vocab trained once on a huge corpus, shipped with the model. We're
-skipping the regex pre-splitting step for now and training on our own
-(small) corpus, to keep the core merge algorithm visible. We may add
-pre-tokenization later if merge quality suffers.
+vocab trained once on a huge corpus, shipped with the model. This project
+now does the regex pre-splitting step too (see "Tokenizer performance"
+below) — it turned out to be necessary for performance, not just merge
+quality, once corpora grow past toy size. We still train our own
+tokenizer on our own corpus each run, rather than shipping a fixed
+pre-trained vocabulary the way `tiktoken` does.
 
 ## What we build here
 
@@ -342,9 +344,21 @@ above, rather than silently retraining.
 
 `src/llm_from_scratch/tokenizer/bpe.py` implements `BPETokenizer` with
 `.train(corpus, vocab_size)`, `.encode(text)`, `.decode(ids)`, matching the
-algorithm above exactly (no regex pre-tokenization yet — see the
-simplification note). Tests in `tests/test_tokenizer.py` cover training,
-encoding, and lossless round-trip on both ASCII and non-ASCII text.
+algorithm above (see "Tokenizer performance" below for the regex
+pre-tokenization and efficient-training update). Tests in
+`tests/test_tokenizer.py` cover training, encoding, and lossless
+round-trip on both ASCII and non-ASCII text.
+
+## Tokenizer performance (cross-cutting milestone)
+
+`train()`/`encode()` now pre-tokenize with a GPT-2-style regex before BPE
+runs, and `train()` uses a chunk-weighted, incrementally-updated algorithm
+instead of rescanning the whole corpus on every merge — this was necessary
+to make training tractable on real-sized corpora (the project's stated
+"a few hundred MB" target), not just a quality improvement. See
+`docs/tokenizer-performance.md` for the full design, complexity argument,
+and backward-compatibility guarantee for tokenizers saved before this
+milestone.
 
 Update (EOS / generation stopping milestone): the `special_tokens` slot
 described above is now actually populated. `BPETokenizer.add_eos_token()`
