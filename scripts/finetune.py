@@ -52,6 +52,7 @@ def main():
         raw = yaml.safe_load(f)
     train_raw = dict(raw["train"])
     train_raw["learning_rate"] = float(train_raw["learning_rate"])
+    train_raw["min_lr"] = float(train_raw["min_lr"])
     train_config = TrainConfig(**train_raw)
     data_config = raw["data"]
 

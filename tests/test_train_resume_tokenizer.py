@@ -35,6 +35,7 @@ model:
 train:
   batch_size: 2
   learning_rate: 1e-2
+  min_lr: 1e-3
   warmup_steps: 1
   max_steps: {max_steps}
   grad_clip: 1.0

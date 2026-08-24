@@ -176,6 +176,7 @@ def test_finetuning_improves_loss_on_instruction_corpus(tmp_path):
     finetune_config = TrainConfig(
         batch_size=4,
         learning_rate=5e-3,
+        min_lr=5e-4,
         warmup_steps=5,
         max_steps=100,
         grad_clip=1.0,

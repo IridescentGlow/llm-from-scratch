@@ -36,6 +36,7 @@ def _tiny_train_config(**overrides) -> TrainConfig:
     defaults = dict(
         batch_size=4,
         learning_rate=1e-2,
+        min_lr=1e-3,
         warmup_steps=2,
         max_steps=5,
         grad_clip=1.0,
@@ -52,17 +53,37 @@ def _tiny_dataset(vocab_size: int, context_length: int, length: int = 200) -> To
     return TokenDataset(tokens, context_length=context_length)
 
 
-def test_get_lr_warmup_then_flat():
+def test_get_lr_linear_warmup():
     base_lr = 1e-3
+    min_lr = 1e-4
     warmup_steps = 10
-    assert get_lr(0, warmup_steps, base_lr) == base_lr * (1 / 10)
-    assert get_lr(9, warmup_steps, base_lr) == base_lr * (10 / 10)
-    assert get_lr(10, warmup_steps, base_lr) == base_lr
-    assert get_lr(1000, warmup_steps, base_lr) == base_lr
+    max_steps = 110
+    assert get_lr(0, warmup_steps, max_steps, base_lr, min_lr) == pytest.approx(base_lr * (1 / 10))
+    assert get_lr(9, warmup_steps, max_steps, base_lr, min_lr) == pytest.approx(base_lr * (10 / 10))
+
+
+def test_get_lr_cosine_decay_after_warmup():
+    base_lr = 1e-3
+    min_lr = 1e-4
+    warmup_steps = 10
+    max_steps = 110
+    # Right at the end of warmup: full base_lr (decay_ratio == 0).
+    assert get_lr(10, warmup_steps, max_steps, base_lr, min_lr) == pytest.approx(base_lr)
+    # Midpoint of the decay window: halfway between base_lr and min_lr.
+    assert get_lr(60, warmup_steps, max_steps, base_lr, min_lr) == pytest.approx(
+        min_lr + 0.5 * (base_lr - min_lr)
+    )
+    # Right at max_steps: decayed all the way down to min_lr.
+    assert get_lr(max_steps, warmup_steps, max_steps, base_lr, min_lr) == pytest.approx(min_lr)
+
+
+def test_get_lr_returns_min_lr_past_max_steps():
+    assert get_lr(1000, 10, 110, 1e-3, 1e-4) == pytest.approx(1e-4)
 
 
 def test_get_lr_handles_zero_warmup():
-    assert get_lr(0, 0, 1e-3) == 1e-3
+    assert get_lr(0, 0, 100, 1e-3, 1e-4) == pytest.approx(1e-3)
+    assert get_lr(100, 0, 100, 1e-3, 1e-4) == pytest.approx(1e-4)
 
 
 def test_estimate_loss_does_not_update_weights():
@@ -208,6 +229,7 @@ model:
 train:
   batch_size: 2
   learning_rate: 0.001
+  min_lr: 0.0001
   warmup_steps: 1
   max_steps: 2
   grad_clip: 1.0
@@ -246,6 +268,7 @@ model:
 train:
   batch_size: 2
   learning_rate: 3e-4
+  min_lr: 3e-5
   warmup_steps: 1
   max_steps: 2
   grad_clip: 1.0
@@ -257,6 +280,8 @@ train:
     _, train_config = load_config(config_path)
     assert isinstance(train_config.learning_rate, float)
     assert train_config.learning_rate == 3e-4
+    assert isinstance(train_config.min_lr, float)
+    assert train_config.min_lr == 3e-5
 
 
 def test_checkpoint_written_periodically_not_only_at_end(tmp_path):

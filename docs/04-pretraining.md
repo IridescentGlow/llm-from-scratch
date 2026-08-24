@@ -91,7 +91,10 @@ direction); too low and training crawls. **Warmup** (`warmup_steps` in
 the config) starts the learning rate near 0 and ramps it up over the
 first N steps — early in training, weights are random and gradients can
 be large/noisy, so a full-size step could be destructive before the model
-has "settled."
+has "settled." After warmup, the learning rate **decays** on a cosine
+curve down to a small floor (`min_lr`) by the final step — large careful
+steps early, smaller and smaller ones as training approaches its end. See
+docs/lr-decay.md for the full design and worked example.
 
 ## Gradient clipping
 
@@ -138,12 +141,12 @@ each time, and the loss number — on average — goes down.
 
 ## Simplification note
 
-Production training adds distributed training (many GPUs), mixed-
-precision (fp16/bf16) for speed, and more sophisticated LR schedules
-(cosine decay after warmup, not just warmup). We implement a
-single-device loop with linear warmup and a flat learning rate after —
+Production training adds distributed training (many GPUs) and mixed-
+precision (fp16/bf16) for speed. We implement a single-device loop —
 enough to watch loss fall and produce a usable checkpoint, not tuned for
-speed. Periodic checkpointing and `--resume` (see
+speed. Learning rate does use warmup + cosine decay (see
+docs/lr-decay.md), matching common practice, rather than being a further
+simplification. Periodic checkpointing and `--resume` (see
 docs/checkpoint-resume.md) are implemented; multi-GPU/distributed
 checkpointing is not.
 
@@ -172,6 +175,11 @@ end-to-end smoke test — that loss clearly decreases when a tiny model
 overfits a short repeating token pattern. A full manual run of
 `scripts/train.py` on a small hand-written corpus was also verified
 directly: train_loss fell from ~5.0 to ~3.2 over 30 steps.
+
+Update (LR decay milestone): `get_lr` now does linear warmup followed by
+cosine decay down to `TrainConfig.min_lr`, instead of staying flat after
+warmup — see docs/lr-decay.md for the full design, status, and manual
+verification.
 
 One integration issue surfaced and fixed: PyYAML's default resolver only
 recognizes bare-exponent numbers like `3e-4` as floats when they have a

@@ -10,6 +10,7 @@ model:
 train:
   batch_size: 32
   learning_rate: 3e-4
+  min_lr: 3e-5      # cosine decay floor -- see docs/lr-decay.md
   warmup_steps: 100
   max_steps: 5000
   grad_clip: 1.0

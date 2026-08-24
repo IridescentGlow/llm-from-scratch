@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -20,6 +21,7 @@ from llm_from_scratch.tokenizer import BPETokenizer
 class TrainConfig:
     batch_size: int
     learning_rate: float
+    min_lr: float
     warmup_steps: int
     max_steps: int
     grad_clip: float
@@ -39,6 +41,7 @@ def load_config(path: str | Path) -> tuple[GPTConfig, TrainConfig]:
     # the latter as a string. Coerce explicitly rather than relying on
     # every config file to use the decimal-point form.
     train_raw["learning_rate"] = float(train_raw["learning_rate"])
+    train_raw["min_lr"] = float(train_raw["min_lr"])
     train_config = TrainConfig(**train_raw)
     return model_config, train_config
 
@@ -78,14 +81,18 @@ def load_checkpoint_for_resume(checkpoint_dir: str | Path, model_config: GPTConf
     return checkpoint
 
 
-def get_lr(step: int, warmup_steps: int, base_lr: float) -> float:
-    """Linear warmup from ~0 to base_lr over warmup_steps, then flat.
+def get_lr(step: int, warmup_steps: int, max_steps: int, base_lr: float, min_lr: float) -> float:
+    """Linear warmup from ~0 to base_lr, then cosine decay down to min_lr.
 
-    See the "Learning rate and warmup" section of docs/04-pretraining.md.
+    See docs/lr-decay.md for the full design and worked example.
     """
-    if warmup_steps <= 0 or step >= warmup_steps:
-        return base_lr
-    return base_lr * (step + 1) / warmup_steps
+    if warmup_steps > 0 and step < warmup_steps:
+        return base_lr * (step + 1) / warmup_steps
+    if step >= max_steps:
+        return min_lr
+    decay_ratio = (step - warmup_steps) / max(1, max_steps - warmup_steps)
+    coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
+    return min_lr + coeff * (base_lr - min_lr)
 
 
 @torch.no_grad()
@@ -181,7 +188,7 @@ def train_model(
             input_ids, target_ids = next(train_iter)
         input_ids, target_ids = input_ids.to(device), target_ids.to(device)
 
-        lr = get_lr(step, config.warmup_steps, config.learning_rate)
+        lr = get_lr(step, config.warmup_steps, config.max_steps, config.learning_rate, config.min_lr)
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
 

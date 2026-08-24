@@ -24,6 +24,7 @@ def _tiny_train_config(**overrides) -> TrainConfig:
     defaults = dict(
         batch_size=4,
         learning_rate=1e-2,
+        min_lr=1e-3,
         warmup_steps=2,
         max_steps=5,
         grad_clip=1.0,
