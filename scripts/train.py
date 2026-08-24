@@ -9,6 +9,7 @@ import yaml
 
 from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
 from llm_from_scratch.device import resolve_device
+from llm_from_scratch.finetune.checkpoint import load_tokenizer_for_checkpoint
 from llm_from_scratch.model import GPT
 from llm_from_scratch.seed import set_seed
 from llm_from_scratch.tokenizer import BPETokenizer
@@ -56,10 +57,21 @@ def main():
         )
     corpus = "\n".join(f.read_text() for f in text_files)
 
-    print(f"Training tokenizer on {len(corpus):,} characters...")
-    tokenizer = BPETokenizer()
-    tokenizer.train(corpus, vocab_size=model_config.vocab_size)
-    tokenizer.add_eos_token()
+    if args.resume:
+        # Reuse the exact tokenizer this checkpoint was pretrained with,
+        # rather than retraining BPE on whatever data/raw/ contains right
+        # now -- retraining could silently produce a different id-to-string
+        # mapping (different corpus content, file ordering, or vocab_size)
+        # than the one the checkpoint's embedding table was trained under.
+        # See docs/resume-tokenizer-consistency.md.
+        checkpoint_path = Path(train_config.checkpoint_dir) / "latest.pt"
+        tokenizer = load_tokenizer_for_checkpoint(checkpoint_path)
+        print(f"Resuming with tokenizer loaded from {checkpoint_path.parent / 'tokenizer.json'}")
+    else:
+        print(f"Training tokenizer on {len(corpus):,} characters...")
+        tokenizer = BPETokenizer()
+        tokenizer.train(corpus, vocab_size=model_config.vocab_size)
+        tokenizer.add_eos_token()
     # The model's vocab_size must include the reserved EOS row -- it can
     # only be added at pretraining time, before the embedding table is
     # built. See docs/eos-generation-stopping.md.
