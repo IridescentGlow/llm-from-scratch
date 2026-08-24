@@ -157,3 +157,59 @@ def test_generate_runs_full_max_new_tokens_when_eos_never_appears():
     out = model.generate(idx, max_new_tokens=5, temperature=0.0, eos_token_id=-1)
 
     assert out.shape == (1, 3 + 5)
+
+
+def test_generate_restores_training_mode_when_called_from_training_mode():
+    """See docs/generation-mode-restoration.md: generate() must leave the
+    model in training mode if it was in training mode before the call."""
+    config = _tiny_config()
+    model = GPT(config)
+    model.train()
+    idx = torch.randint(0, config.vocab_size, (1, 3))
+
+    model.generate(idx, max_new_tokens=3)
+
+    assert model.training is True
+
+
+def test_generate_leaves_eval_mode_when_called_from_eval_mode():
+    """generate() must not force training mode on if the model was already
+    in eval mode before the call."""
+    config = _tiny_config()
+    model = GPT(config)
+    model.eval()
+    idx = torch.randint(0, config.vocab_size, (1, 3))
+
+    model.generate(idx, max_new_tokens=3)
+
+    assert model.training is False
+
+
+def test_generate_restores_training_mode_on_early_eos_stop():
+    """Mode restoration must hold on the early-return path too, not just
+    the "ran the full max_new_tokens loop" path."""
+    config = _tiny_config()
+    model = GPT(config)
+    idx = torch.randint(0, config.vocab_size, (1, 3))
+
+    first_token = model.generate(idx, max_new_tokens=1, temperature=0.0)[0, -1].item()
+
+    model.train()
+    model.generate(idx, max_new_tokens=10, temperature=0.0, eos_token_id=first_token)
+
+    assert model.training is True
+
+
+def test_generate_output_unchanged_by_mode_restoration():
+    """The mode-restoration fix must not alter generated token ids."""
+    config = _tiny_config()
+    model = GPT(config)
+    idx = torch.randint(0, config.vocab_size, (2, 3))
+
+    model.train()
+    out_from_train = model.generate(idx, max_new_tokens=5, temperature=0.0)
+
+    model.eval()
+    out_from_eval = model.generate(idx, max_new_tokens=5, temperature=0.0)
+
+    assert torch.equal(out_from_train, out_from_eval)

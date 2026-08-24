@@ -162,18 +162,27 @@ class GPT(nn.Module):
         see docs/eos-generation-stopping.md. `max_new_tokens` still applies
         as a hard cap regardless: if EOS is never produced, generation runs
         the full `max_new_tokens` exactly as when `eos_token_id` is None.
+
+        Temporarily switches the model to eval mode (so dropout is off
+        during generation) and restores whatever mode it was in before the
+        call once generation finishes -- see
+        docs/generation-mode-restoration.md.
         """
+        was_training = self.training
         self.eval()
-        for _ in range(max_new_tokens):
-            idx_cond = idx[:, -self.config.context_length :]
-            logits, _ = self(idx_cond)
-            next_token_logits = logits[:, -1, :]  # (batch, vocab_size)
-            if temperature <= 0:
-                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
-            else:
-                probs = F.softmax(next_token_logits / temperature, dim=-1)
-                next_token = torch.multinomial(probs, num_samples=1)
-            idx = torch.cat([idx, next_token], dim=1)
-            if eos_token_id is not None and next_token.item() == eos_token_id:
-                break
+        try:
+            for _ in range(max_new_tokens):
+                idx_cond = idx[:, -self.config.context_length :]
+                logits, _ = self(idx_cond)
+                next_token_logits = logits[:, -1, :]  # (batch, vocab_size)
+                if temperature <= 0:
+                    next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                else:
+                    probs = F.softmax(next_token_logits / temperature, dim=-1)
+                    next_token = torch.multinomial(probs, num_samples=1)
+                idx = torch.cat([idx, next_token], dim=1)
+                if eos_token_id is not None and next_token.item() == eos_token_id:
+                    break
+        finally:
+            self.train(was_training)
         return idx
