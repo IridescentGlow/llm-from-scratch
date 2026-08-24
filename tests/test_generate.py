@@ -1,3 +1,5 @@
+from dataclasses import asdict
+
 import torch
 
 from llm_from_scratch.finetune import load_pretrained_model
@@ -123,7 +125,9 @@ def test_generate_reuses_load_pretrained_model(tmp_path):
     config = _tiny_model_config()
     model = GPT(config)
     checkpoint_path = tmp_path / "checkpoint.pt"
-    torch.save({"model_state_dict": model.state_dict(), "model_config": config}, checkpoint_path)
+    torch.save(
+        {"model_state_dict": model.state_dict(), "model_config": asdict(config)}, checkpoint_path
+    )
 
     loaded = load_pretrained_model(checkpoint_path)
     tokenizer = _tokenizer(config.vocab_size)

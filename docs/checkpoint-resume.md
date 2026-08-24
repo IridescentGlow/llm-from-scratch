@@ -120,6 +120,18 @@ When `--resume` is **not** passed, behavior is unchanged from today:
 train from step 0, using whatever fresh model/optimizer `scripts/train.py`
 already constructs.
 
+## Update: checkpoint format hardening
+
+`model_config` inside `latest.pt` is now saved as a plain dict, not a
+pickled `GPTConfig` object, so the checkpoint can be loaded with
+`torch.load(..., weights_only=True)` instead of `weights_only=False`.
+`load_checkpoint_for_resume`'s validation described above (missing
+`optimizer_state_dict`/`step`, mismatched `model_config`) is unchanged
+in every other respect. See `docs/checkpoint-format.md` for the full
+design and why it matters, and its "How old checkpoints will be
+handled" section for what happens to a checkpoint saved before this
+change (refuses to load, doesn't fall back to unsafe unpickling).
+
 ## Reused, unchanged
 
 - **Tokenizer persistence** — `tokenizer.json` is saved once (on the

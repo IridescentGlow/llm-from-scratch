@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import torch
-
+from llm_from_scratch.checkpoint import load_checkpoint_dict
 from llm_from_scratch.model import GPT
 from llm_from_scratch.tokenizer import BPETokenizer
 
@@ -19,8 +18,12 @@ def load_pretrained_model(checkpoint_path: str | Path) -> GPT:
     See docs/device-support.md. Callers move the model to the actual target
     device afterward (`train_model`/`evaluate_model`/`generate` all do this
     via their `device` argument).
+
+    Loads with `weights_only=True` (via `load_checkpoint_dict`) -- see
+    docs/checkpoint-format.md. Raises ValueError, not a silent unsafe
+    fallback, for a checkpoint saved before that milestone.
     """
-    checkpoint = torch.load(checkpoint_path, weights_only=False, map_location="cpu")
+    checkpoint = load_checkpoint_dict(checkpoint_path, map_location="cpu")
     model = GPT(checkpoint["model_config"])
     model.load_state_dict(checkpoint["model_state_dict"])
     return model

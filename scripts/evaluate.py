@@ -5,14 +5,12 @@ Usage: python scripts/evaluate.py --checkpoint checkpoints/latest.pt --config co
 import argparse
 from pathlib import Path
 
-import torch
 import yaml
 
 from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
 from llm_from_scratch.device import resolve_device
 from llm_from_scratch.eval import evaluate_model
-from llm_from_scratch.finetune import load_tokenizer_for_checkpoint
-from llm_from_scratch.model import GPT
+from llm_from_scratch.finetune import load_pretrained_model, load_tokenizer_for_checkpoint
 
 
 def main():
@@ -25,13 +23,13 @@ def main():
     device = resolve_device(args.device)
     print(f"Using device: {device}")
 
-    # map_location="cpu" so a checkpoint saved from a GPU run still loads on
-    # a CPU-only machine -- see docs/device-support.md. evaluate_model moves
-    # the model to `device` itself.
-    checkpoint = torch.load(args.checkpoint, weights_only=False, map_location="cpu")
-    model_config = checkpoint["model_config"]
-    model = GPT(model_config)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    # Reuses the same shared, safe (weights_only=True) checkpoint loader as
+    # scripts/generate.py and scripts/finetune.py -- see
+    # docs/checkpoint-format.md. Loads onto CPU first regardless of what
+    # device the checkpoint was saved from; evaluate_model moves the model
+    # to `device` itself. See docs/device-support.md.
+    model = load_pretrained_model(args.checkpoint)
+    model_config = model.config
 
     with open(args.config) as f:
         raw = yaml.safe_load(f)

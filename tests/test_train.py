@@ -1,4 +1,5 @@
 import os
+from dataclasses import asdict
 
 import numpy as np
 import pytest
@@ -95,9 +96,14 @@ def test_train_model_runs_and_produces_checkpoint(tmp_path):
 
     checkpoint_path = tmp_path / "ckpt" / "latest.pt"
     assert checkpoint_path.exists()
-    checkpoint = torch.load(checkpoint_path, weights_only=False)
+    # weights_only=True (not False) -- the checkpoint must be safely
+    # loadable without trusting arbitrary pickled objects. See
+    # docs/checkpoint-format.md. model_config comes back as a plain dict
+    # at this raw torch.load level (GPTConfig reconstruction happens in
+    # load_checkpoint_dict, not in torch.load itself).
+    checkpoint = torch.load(checkpoint_path, weights_only=True)
     assert "model_state_dict" in checkpoint
-    assert checkpoint["model_config"].vocab_size == model_config.vocab_size
+    assert checkpoint["model_config"]["vocab_size"] == model_config.vocab_size
     assert "optimizer_state_dict" in checkpoint
     assert checkpoint["step"] == train_config.max_steps
 
@@ -338,7 +344,7 @@ def test_checkpoint_survives_interrupted_write(tmp_path, monkeypatch):
     checkpoint_path = tmp_path / "ckpt" / "latest.pt"
     assert checkpoint_path.exists()
     # the first (successful) save was at step 3 -- it must still be intact
-    checkpoint = torch.load(checkpoint_path, weights_only=False)
+    checkpoint = torch.load(checkpoint_path, weights_only=True)
     assert checkpoint["step"] == 3
 
 
@@ -349,18 +355,45 @@ def test_load_checkpoint_for_resume_missing_file_raises(tmp_path):
 
 
 def test_load_checkpoint_for_resume_rejects_pre_milestone_checkpoint(tmp_path):
-    """A checkpoint saved before this milestone (no optimizer_state_dict/step)
-    must fail loudly, not silently resume with step=0 / a fresh optimizer.
+    """A checkpoint saved before the checkpoint/resume milestone (no
+    optimizer_state_dict/step) must fail loudly, not silently resume with
+    step=0 / a fresh optimizer. Uses the current safe (plain-dict
+    model_config) format so this test isolates the missing-keys failure
+    from the separate legacy-pickle-format failure covered by
+    tests/test_checkpoint.py.
     """
     model_config = _tiny_model_config()
     checkpoint_dir = tmp_path / "ckpt"
     checkpoint_dir.mkdir()
     torch.save(
-        {"model_state_dict": GPT(model_config).state_dict(), "model_config": model_config},
+        {"model_state_dict": GPT(model_config).state_dict(), "model_config": asdict(model_config)},
         checkpoint_dir / "latest.pt",
     )
 
     with pytest.raises(ValueError, match="missing"):
+        load_checkpoint_for_resume(checkpoint_dir, model_config)
+
+
+def test_load_checkpoint_for_resume_rejects_legacy_pickled_config(tmp_path):
+    """A checkpoint with model_config pickled as a real GPTConfig object
+    (predating the checkpoint format hardening milestone) must fail
+    clearly on --resume too, not just for evaluate/generate/finetune. See
+    docs/checkpoint-format.md.
+    """
+    model_config = _tiny_model_config()
+    checkpoint_dir = tmp_path / "ckpt"
+    checkpoint_dir.mkdir()
+    torch.save(
+        {
+            "model_state_dict": GPT(model_config).state_dict(),
+            "model_config": model_config,  # a real object, not asdict(...)
+            "optimizer_state_dict": {},
+            "step": 5,
+        },
+        checkpoint_dir / "latest.pt",
+    )
+
+    with pytest.raises(ValueError, match="[Rr]egenerate"):
         load_checkpoint_for_resume(checkpoint_dir, model_config)
 
 
@@ -372,7 +405,7 @@ def test_load_checkpoint_for_resume_rejects_mismatched_model_config(tmp_path):
     torch.save(
         {
             "model_state_dict": GPT(other_config).state_dict(),
-            "model_config": other_config,
+            "model_config": asdict(other_config),
             "optimizer_state_dict": {},
             "step": 5,
         },
@@ -421,5 +454,5 @@ def test_resume_continues_from_saved_step_not_zero(tmp_path):
     # steps 4..9 = 6 more training steps, not 10
     assert len(result["train_losses"]) == 6
 
-    final_checkpoint = torch.load(checkpoint_dir / "latest.pt", weights_only=False)
+    final_checkpoint = torch.load(checkpoint_dir / "latest.pt", weights_only=True)
     assert final_checkpoint["step"] == 10

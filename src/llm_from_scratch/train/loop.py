@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
 import torch
 import yaml
 
+from llm_from_scratch.checkpoint import load_checkpoint_dict
 from llm_from_scratch.data import TokenDataset, get_dataloader
 from llm_from_scratch.model import GPT, GPTConfig
 from llm_from_scratch.tokenizer import BPETokenizer
@@ -47,16 +48,18 @@ def load_checkpoint_for_resume(checkpoint_dir: str | Path, model_config: GPTConf
 
     Raises FileNotFoundError if no checkpoint exists at checkpoint_dir, and
     ValueError if it's missing optimizer_state_dict/step (saved before this
-    milestone existed) or was saved with a different model_config -- either
-    would make resuming silently wrong rather than just inconvenient. See
-    docs/checkpoint-resume.md.
+    milestone existed), was saved with a different model_config, or predates
+    safe checkpoint serialization (docs/checkpoint-format.md) -- any of
+    these would make resuming silently wrong (or unsafe) rather than just
+    inconvenient. See docs/checkpoint-resume.md.
     """
     checkpoint_path = Path(checkpoint_dir) / "latest.pt"
-    if not checkpoint_path.exists():
+    try:
+        checkpoint = load_checkpoint_dict(checkpoint_path)
+    except FileNotFoundError:
         raise FileNotFoundError(
             f"--resume was given but no checkpoint found at {checkpoint_path}."
-        )
-    checkpoint = torch.load(checkpoint_path, weights_only=False, map_location="cpu")
+        ) from None
 
     missing = [k for k in ("optimizer_state_dict", "step") if k not in checkpoint]
     if missing:
@@ -156,7 +159,10 @@ def train_model(
         torch.save(
             {
                 "model_state_dict": model.state_dict(),
-                "model_config": model.config,
+                # Plain dict, not the GPTConfig object -- so the checkpoint
+                # can be loaded with weights_only=True. See
+                # docs/checkpoint-format.md.
+                "model_config": asdict(model.config),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "step": step + 1,
             },

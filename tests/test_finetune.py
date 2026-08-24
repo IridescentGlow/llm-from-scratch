@@ -1,4 +1,5 @@
 import json
+from dataclasses import asdict
 
 import numpy as np
 import pytest
@@ -72,13 +73,31 @@ def test_load_pretrained_model_restores_weights(tmp_path):
     config = _tiny_model_config()
     model = GPT(config)
     checkpoint_path = tmp_path / "pretrained.pt"
-    torch.save({"model_state_dict": model.state_dict(), "model_config": config}, checkpoint_path)
+    torch.save(
+        {"model_state_dict": model.state_dict(), "model_config": asdict(config)}, checkpoint_path
+    )
 
     loaded = load_pretrained_model(checkpoint_path)
 
     assert loaded.config == config
     for name, param in model.named_parameters():
         assert torch.equal(param, loaded.state_dict()[name])
+
+
+def test_load_pretrained_model_rejects_legacy_pickled_config(tmp_path):
+    """A checkpoint saved before the checkpoint format hardening milestone
+    has model_config pickled as a real GPTConfig object -- load_pretrained_model
+    (used by scripts/generate.py, scripts/finetune.py, and scripts/evaluate.py)
+    must fail clearly, not silently accept it via weights_only=False. See
+    docs/checkpoint-format.md.
+    """
+    config = _tiny_model_config()
+    model = GPT(config)
+    checkpoint_path = tmp_path / "pretrained.pt"
+    torch.save({"model_state_dict": model.state_dict(), "model_config": config}, checkpoint_path)
+
+    with pytest.raises(ValueError, match="[Rr]egenerate"):
+        load_pretrained_model(checkpoint_path)
 
 
 def test_load_tokenizer_for_checkpoint_loads_saved_tokenizer(tmp_path):
@@ -171,5 +190,5 @@ def test_finetuning_improves_loss_on_instruction_corpus(tmp_path):
     assert after["loss"] < before["loss"]
     assert after["perplexity"] < before["perplexity"]
 
-    checkpoint = torch.load(result["checkpoint_path"], weights_only=False)
-    assert checkpoint["model_config"] == model_config
+    checkpoint = torch.load(result["checkpoint_path"], weights_only=True)
+    assert checkpoint["model_config"] == asdict(model_config)

@@ -177,7 +177,7 @@ def test_resumed_training_still_reaches_expected_step(tmp_path, monkeypatch):
     )
     _run_main(monkeypatch, config_path)
 
-    checkpoint = torch.load(checkpoint_dir / "latest.pt", weights_only=False)
+    checkpoint = torch.load(checkpoint_dir / "latest.pt", weights_only=True)
     assert checkpoint["step"] == 4
 
     resume_config_path = _write_config(
@@ -185,5 +185,5 @@ def test_resumed_training_still_reaches_expected_step(tmp_path, monkeypatch):
     )
     _run_main(monkeypatch, resume_config_path, resume=True)
 
-    resumed_checkpoint = torch.load(checkpoint_dir / "latest.pt", weights_only=False)
+    resumed_checkpoint = torch.load(checkpoint_dir / "latest.pt", weights_only=True)
     assert resumed_checkpoint["step"] == 10
