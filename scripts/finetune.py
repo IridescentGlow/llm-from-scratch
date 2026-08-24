@@ -17,6 +17,7 @@ from llm_from_scratch.finetune import (
     load_pretrained_model,
     load_tokenizer_for_checkpoint,
 )
+from llm_from_scratch.seed import set_seed
 from llm_from_scratch.train import TrainConfig, train_model
 
 
@@ -26,10 +27,22 @@ def main():
     parser.add_argument("--config", required=True)
     parser.add_argument("--prompt", default="Instruction: What is the capital of France?\nResponse:")
     parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Seed for reproducible dropout/shuffling during fine-tuning. Omit "
+            "for today's unseeded behavior. See docs/reproducibility.md."
+        ),
+    )
     args = parser.parse_args()
 
     device = resolve_device(args.device)
     print(f"Using device: {device}")
+
+    if args.seed is not None:
+        set_seed(args.seed)
 
     model = load_pretrained_model(args.checkpoint)
     model.to(device)

@@ -8,6 +8,7 @@ import argparse
 from llm_from_scratch.device import resolve_device
 from llm_from_scratch.finetune import load_pretrained_model, load_tokenizer_for_checkpoint
 from llm_from_scratch.generate import generate
+from llm_from_scratch.seed import set_seed
 
 
 def main():
@@ -17,10 +18,22 @@ def main():
     parser.add_argument("--max-new-tokens", type=int, default=50)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Seed for reproducible sampling when --temperature > 0. Omit for "
+            "today's unseeded behavior. See docs/reproducibility.md."
+        ),
+    )
     args = parser.parse_args()
 
     device = resolve_device(args.device)
     print(f"Using device: {device}")
+
+    if args.seed is not None:
+        set_seed(args.seed)
 
     model = load_pretrained_model(args.checkpoint)
 

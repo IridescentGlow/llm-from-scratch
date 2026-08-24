@@ -10,6 +10,7 @@ import yaml
 from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
 from llm_from_scratch.device import resolve_device
 from llm_from_scratch.model import GPT
+from llm_from_scratch.seed import set_seed
 from llm_from_scratch.tokenizer import BPETokenizer
 from llm_from_scratch.train import load_checkpoint_for_resume, load_config, train_model
 
@@ -26,10 +27,22 @@ def main():
             "step) instead of starting a fresh run. See docs/checkpoint-resume.md."
         ),
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Seed for reproducible initialization/dropout/shuffling. Omit for "
+            "today's unseeded behavior. See docs/reproducibility.md."
+        ),
+    )
     args = parser.parse_args()
 
     device = resolve_device(args.device)
     print(f"Using device: {device}")
+
+    if args.seed is not None:
+        set_seed(args.seed)
 
     model_config, train_config = load_config(args.config)
     with open(args.config) as f:
