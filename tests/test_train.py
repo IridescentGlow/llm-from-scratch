@@ -92,9 +92,9 @@ def test_estimate_loss_does_not_update_weights():
     dataset = _tiny_dataset(config.vocab_size, config.context_length)
     loader = get_dataloader(dataset, batch_size=4, shuffle=False)
 
-    weights_before = model.lm_head.weight.clone()
+    weights_before = model.token_embedding.weight.clone()
     loss = estimate_loss(model, loader, num_batches=3, device="cpu")
-    weights_after = model.lm_head.weight
+    weights_after = model.token_embedding.weight
 
     assert isinstance(loss, float)
     assert torch.equal(weights_before, weights_after)
@@ -174,13 +174,13 @@ def test_weights_change_after_a_training_step(tmp_path):
         max_steps=1, checkpoint_dir=str(tmp_path / "ckpt")
     )
     model = GPT(model_config)
-    weight_before = model.lm_head.weight.clone()
+    weight_before = model.token_embedding.weight.clone()
 
     train_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length)
     val_dataset = _tiny_dataset(model_config.vocab_size, model_config.context_length, length=80)
     train_model(model, train_dataset, val_dataset, train_config, log_fn=lambda _msg: None)
 
-    assert not torch.equal(weight_before, model.lm_head.weight)
+    assert not torch.equal(weight_before, model.token_embedding.weight)
 
 
 def test_loss_decreases_on_tiny_overfit_run(tmp_path):

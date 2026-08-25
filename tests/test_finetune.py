@@ -101,6 +101,26 @@ def test_load_pretrained_model_rejects_legacy_pickled_config(tmp_path):
         load_pretrained_model(checkpoint_path)
 
 
+def test_load_pretrained_model_rejects_legacy_untied_checkpoint(tmp_path):
+    """A checkpoint saved before weight tying has an independent
+    lm_head.weight key that the tied GPT has no parameter for. strict=True
+    state_dict loading must fail loudly, not silently drop or merge it --
+    see docs/weight-tying-initialization.md, "What happens to old (untied,
+    default-init) checkpoints".
+    """
+    config = _tiny_model_config()
+    model = GPT(config)
+    state_dict = model.state_dict()
+    # Simulate a pre-tying checkpoint: an extra, independently-trained
+    # lm_head.weight key alongside token_embedding.weight.
+    state_dict["lm_head.weight"] = torch.randn(config.vocab_size, config.n_embd)
+    checkpoint_path = tmp_path / "pretrained.pt"
+    torch.save({"model_state_dict": state_dict, "model_config": asdict(config)}, checkpoint_path)
+
+    with pytest.raises(RuntimeError, match="lm_head.weight"):
+        load_pretrained_model(checkpoint_path)
+
+
 def test_load_tokenizer_for_checkpoint_loads_saved_tokenizer(tmp_path):
     tokenizer = BPETokenizer()
     tokenizer.train("hello world, this is a tiny corpus for testing.", vocab_size=260)

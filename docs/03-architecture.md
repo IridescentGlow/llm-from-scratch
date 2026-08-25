@@ -163,3 +163,13 @@ logits each step), truncating context to `context_length` as needed.
 Tests in `tests/test_model.py` cover construction, forward-pass logits
 shape, loss computation, causal masking (a later token can't affect an
 earlier position's output), and generation.
+
+Update (weight tying + GPT-style initialization milestone): `GPT` now has
+no separate `lm_head` parameter — the final projection to vocab-sized
+logits reuses `token_embedding.weight` directly, and every
+`nn.Linear`/`nn.Embedding` weight is explicitly initialized (`N(0, 0.02²)`,
+with extra `1 / sqrt(2 * n_layer)` scaling on the two projections that
+write onto the residual stream) instead of relying on PyTorch's library
+defaults. No shape, flow, or forward-pass logic described above changed.
+See `docs/weight-tying-initialization.md` for the full design, worked
+examples, and legacy-checkpoint policy.

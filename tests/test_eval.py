@@ -80,9 +80,9 @@ def test_evaluate_model_does_not_update_weights():
     model = GPT(config)
     dataset = _tiny_dataset(config.vocab_size, config.context_length)
 
-    weights_before = model.lm_head.weight.clone()
+    weights_before = model.token_embedding.weight.clone()
     evaluate_model(model, dataset, batch_size=4)
-    weights_after = model.lm_head.weight
+    weights_after = model.token_embedding.weight
 
     assert torch.equal(weights_before, weights_after)
     assert model.training  # restored to train mode afterwards

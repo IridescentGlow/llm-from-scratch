@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from llm_from_scratch.model import GPT, GPTConfig
@@ -20,6 +21,69 @@ def test_model_constructs():
     model = GPT(_tiny_config())
     assert isinstance(model, torch.nn.Module)
     assert model.config.vocab_size == 50
+
+
+def test_no_separate_lm_head_parameter():
+    # Weight tying is structural: there's no lm_head submodule/parameter at
+    # all, only token_embedding. See docs/weight-tying-initialization.md.
+    model = GPT(_tiny_config())
+    assert not hasattr(model, "lm_head")
+    assert "lm_head.weight" not in model.state_dict()
+
+
+def test_output_projection_is_tied_to_token_embedding():
+    model = GPT(_tiny_config())
+    idx = torch.randint(0, model.config.vocab_size, (1, 3))
+
+    logits, _ = model(idx)
+    # token_embedding.weight is the only parameter used for both the input
+    # lookup and the output projection -- a gradient from the output logits
+    # must flow into it directly (not into some separate lm_head parameter,
+    # which no longer exists -- see test_no_separate_lm_head_parameter).
+    loss = torch.nn.functional.cross_entropy(
+        logits.view(-1, model.config.vocab_size), idx.view(-1)
+    )
+    loss.backward()
+    assert model.token_embedding.weight.grad is not None
+    assert torch.any(model.token_embedding.weight.grad != 0)
+
+
+def test_tying_reduces_parameter_count_vs_untied():
+    config = _tiny_config()
+    model = GPT(config)
+    total_params = sum(p.numel() for p in model.parameters())
+
+    embedding_params = config.vocab_size * config.n_embd
+    untied_total = total_params + embedding_params  # what it'd be with a separate lm_head
+
+    assert total_params == untied_total - embedding_params
+    # The embedding table appears in the parameter count exactly once.
+    assert sum(
+        1 for name, _ in model.named_parameters() if name == "token_embedding.weight"
+    ) == 1
+
+
+def test_init_weights_use_gpt_style_std():
+    config = _tiny_config(n_layer=4)
+    model = GPT(config)
+
+    # Non-residual-writing linear layers and embeddings: std ~= 0.02.
+    emb_std = model.token_embedding.weight.detach().std().item()
+    assert 0.01 < emb_std < 0.03
+
+    qkv_std = model.blocks[0].attn.qkv_proj.weight.detach().std().item()
+    assert 0.01 < qkv_std < 0.03
+
+    # Residual-writing projections: scaled down by 1 / sqrt(2 * n_layer).
+    expected_residual_std = 0.02 / (2 * config.n_layer) ** 0.5
+    out_proj_std = model.blocks[0].attn.out_proj.weight.detach().std().item()
+    assert out_proj_std == pytest.approx(expected_residual_std, rel=0.5)
+
+
+def test_linear_biases_initialized_to_zero():
+    model = GPT(_tiny_config())
+    assert torch.all(model.blocks[0].attn.qkv_proj.bias == 0)
+    assert torch.all(model.blocks[0].attn.out_proj.bias == 0)
 
 
 def test_forward_logits_shape():

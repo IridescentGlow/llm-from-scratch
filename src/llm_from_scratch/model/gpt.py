@@ -99,7 +99,15 @@ class Block(nn.Module):
 
 
 class GPT(nn.Module):
-    """Minimal GPT-style decoder: embeddings -> N transformer blocks -> LM head."""
+    """Minimal GPT-style decoder: embeddings -> N transformer blocks -> LM head.
+
+    Weight tying + GPT-style initialization -- see
+    docs/weight-tying-initialization.md. There is no separate `lm_head`
+    parameter: the final projection to vocab-sized logits reuses
+    `token_embedding.weight` directly (`F.linear(x, self.token_embedding.weight)`
+    in `forward`), so the same matrix serves as both the input embedding
+    table and the output projection.
+    """
 
     def __init__(self, config: GPTConfig) -> None:
         super().__init__()
@@ -109,7 +117,32 @@ class GPT(nn.Module):
         self.dropout = nn.Dropout(config.dropout)
         self.blocks = nn.ModuleList(Block(config) for _ in range(config.n_layer))
         self.ln_final = nn.LayerNorm(config.n_embd)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+
+        self.apply(self._init_weights)
+        # The two projections that write directly onto the residual stream
+        # (one per sub-layer per block) get extra scaling so the stream's
+        # variance doesn't grow with depth -- see
+        # docs/weight-tying-initialization.md, "Why residual/output
+        # projections get 1 / sqrt(2 * n_layer) scaling". Applied after
+        # self.apply() so it adjusts (not replaces) the base 0.02 init.
+        residual_std = 0.02 / math.sqrt(2 * config.n_layer)
+        for block in self.blocks:
+            nn.init.normal_(block.attn.out_proj.weight, mean=0.0, std=residual_std)
+            nn.init.normal_(block.ff.net[2].weight, mean=0.0, std=residual_std)
+
+    @staticmethod
+    def _init_weights(module: nn.Module) -> None:
+        """GPT-style init: N(0, 0.02^2) for weights, zero for biases.
+
+        See docs/weight-tying-initialization.md. Applied via
+        `self.apply(...)`, so it runs once per submodule, including the
+        two `nn.Embedding` tables. LayerNorm keeps its PyTorch default
+        (weight=1, bias=0), so it's deliberately not handled here.
+        """
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                nn.init.zeros_(module.bias)
 
     def forward(
         self, idx: Tensor, targets: Tensor | None = None
@@ -132,7 +165,9 @@ class GPT(nn.Module):
         for block in self.blocks:
             x = block(x)
         x = self.ln_final(x)
-        logits = self.lm_head(x)  # (batch, seq_len, vocab_size)
+        # Tied output projection: reuse token_embedding.weight instead of a
+        # separate lm_head parameter. See docs/weight-tying-initialization.md.
+        logits = F.linear(x, self.token_embedding.weight)  # (batch, seq_len, vocab_size)
 
         loss = None
         if targets is not None:
