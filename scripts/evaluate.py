@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
+from llm_from_scratch.data import TokenDataset, ensure_token_cache, load_token_ids, train_val_split
 from llm_from_scratch.device import resolve_device
 from llm_from_scratch.eval import evaluate_model
 from llm_from_scratch.finetune import load_pretrained_model, load_tokenizer_for_checkpoint
@@ -48,12 +48,14 @@ def main():
     # clear error instead of retraining if this checkpoint predates
     # tokenizer persistence.
     tokenizer = load_tokenizer_for_checkpoint(args.checkpoint)
-    token_ids = tokenizer.encode(corpus)
 
     processed_path = Path(data_config["processed_path"])
     processed_path.mkdir(parents=True, exist_ok=True)
     tokens_path = processed_path / "tokens.bin"
-    write_token_ids(token_ids, tokens_path)
+    meta_path = processed_path / "tokens.meta.json"
+    # See docs/token-cache.md -- reuses tokens.bin when it already holds
+    # this corpus encoded with this exact tokenizer.
+    ensure_token_cache(corpus, tokenizer, tokens_path, meta_path)
     all_tokens = load_token_ids(tokens_path)
 
     _, val_tokens = train_val_split(all_tokens, data_config["train_split"])

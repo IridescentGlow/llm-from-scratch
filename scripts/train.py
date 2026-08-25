@@ -7,7 +7,12 @@ from pathlib import Path
 
 import yaml
 
-from llm_from_scratch.data import TokenDataset, load_token_ids, train_val_split, write_token_ids
+from llm_from_scratch.data import (
+    TokenDataset,
+    ensure_token_cache,
+    load_token_ids,
+    train_val_split,
+)
 from llm_from_scratch.device import resolve_device
 from llm_from_scratch.finetune.checkpoint import load_tokenizer_for_checkpoint
 from llm_from_scratch.model import GPT
@@ -79,9 +84,17 @@ def main():
 
     processed_path = Path(data_config["processed_path"])
     processed_path.mkdir(parents=True, exist_ok=True)
-    token_ids = tokenizer.encode(corpus)
     tokens_path = processed_path / "tokens.bin"
-    write_token_ids(token_ids, tokens_path)
+    meta_path = processed_path / "tokens.meta.json"
+    # Reuses tokens.bin if it already holds the exact result of encoding
+    # this corpus with this tokenizer -- see docs/token-cache.md. Falls
+    # back to encoding (and rewriting the cache) whenever the corpus,
+    # tokenizer, or tokens.bin itself has changed since the cache was
+    # written; never silently reuses stale ids.
+    cache_reused = ensure_token_cache(corpus, tokenizer, tokens_path, meta_path)
+    print(
+        "Reusing cached tokens.bin" if cache_reused else f"Encoded {len(corpus):,} characters"
+    )
 
     all_tokens = load_token_ids(tokens_path)
     train_tokens, val_tokens = train_val_split(all_tokens, data_config["train_split"])

@@ -366,3 +366,18 @@ reserves an id for "end of sequence," saved and loaded like everything else
 in `tokenizer.json`. See docs/eos-generation-stopping.md for the full
 design, why it must be decided at pretraining time (not fine-tuning time),
 and how it interacts with fine-tuning and generation.
+
+## Token cache (cross-cutting milestone)
+
+`scripts/train.py` and `scripts/evaluate.py` used to re-run
+`tokenizer.encode(corpus)` over the *entire* raw corpus on every single
+invocation, including `--resume`, even when the corpus and tokenizer were
+both unchanged from the last run. `data/processed/tokens.bin` is now
+reused whenever a `data/processed/tokens.meta.json` sidecar proves it
+still holds the exact result of encoding the current corpus with the
+current tokenizer (hashes of both, plus an integrity hash of `tokens.bin`
+itself); any mismatch — or a missing/corrupt cache — falls back to
+re-encoding exactly as before, never silently serving stale ids. This
+doesn't change what `encode()`/`decode()` produce or the tokenizer
+persistence format above — it only skips redundant re-encoding of data
+that hasn't changed. See `docs/token-cache.md` for the full design.

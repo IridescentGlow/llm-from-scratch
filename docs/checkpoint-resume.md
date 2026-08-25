@@ -132,6 +132,18 @@ design and why it matters, and its "How old checkpoints will be
 handled" section for what happens to a checkpoint saved before this
 change (refuses to load, doesn't fall back to unsafe unpickling).
 
+## Update: token cache
+
+`--resume` now also reuses `data/processed/tokens.bin` instead of
+re-encoding the raw corpus, whenever a metadata sidecar proves the cache
+still matches the resumed checkpoint's tokenizer and the current corpus.
+This is a pure speed win on top of everything above — resume still loads
+the same tokenizer and continues from the same `step` exactly as
+described here; it just no longer re-pays a full corpus encode before the
+training loop can start. See `docs/token-cache.md` for the full design,
+including what happens if the corpus changed between crash and resume
+(the cache is rejected, not silently reused).
+
 ## Reused, unchanged
 
 - **Tokenizer persistence** — `tokenizer.json` is saved once (on the
