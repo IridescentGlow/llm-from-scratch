@@ -10,6 +10,7 @@ from llm_from_scratch.model import GPT, GPTConfig
 from llm_from_scratch.tokenizer import BPETokenizer
 from llm_from_scratch.train import (
     TrainConfig,
+    configure_optimizer,
     estimate_loss,
     get_lr,
     load_checkpoint_for_resume,
@@ -43,6 +44,7 @@ def _tiny_train_config(**overrides) -> TrainConfig:
         eval_every=5,
         checkpoint_dir="",  # set per-test via tmp_path
         checkpoint_every=5,
+        weight_decay=0.01,
     )
     defaults.update(overrides)
     return TrainConfig(**defaults)
@@ -51,6 +53,54 @@ def _tiny_train_config(**overrides) -> TrainConfig:
 def _tiny_dataset(vocab_size: int, context_length: int, length: int = 200) -> TokenDataset:
     tokens = np.random.default_rng(0).integers(0, vocab_size, size=length)
     return TokenDataset(tokens, context_length=context_length)
+
+
+def test_configure_optimizer_groups_params_by_ndim():
+    """Weight matrices (ndim >= 2) get real weight_decay; biases and
+    LayerNorm gains (ndim == 1) get none. See
+    docs/weight-decay-grouping.md."""
+    model = GPT(_tiny_model_config())
+    optimizer = configure_optimizer(model, learning_rate=1e-2, weight_decay=0.05)
+
+    assert len(optimizer.param_groups) == 2
+    decay_group = next(g for g in optimizer.param_groups if g["weight_decay"] == 0.05)
+    no_decay_group = next(g for g in optimizer.param_groups if g["weight_decay"] == 0.0)
+
+    assert all(p.dim() >= 2 for p in decay_group["params"])
+    assert all(p.dim() < 2 for p in no_decay_group["params"])
+
+    # Every parameter the model actually has ends up in exactly one group.
+    grouped = len(decay_group["params"]) + len(no_decay_group["params"])
+    assert grouped == sum(1 for _ in model.parameters())
+
+    # Sanity check against real parameter names: biases and LayerNorm
+    # weights (both 1-D) land in no_decay; embedding/Linear weights (2-D+)
+    # land in decay.
+    no_decay_ids = {id(p) for p in no_decay_group["params"]}
+    for name, param in model.named_parameters():
+        if name.endswith(".bias") or ("norm" in name and name.endswith(".weight")):
+            assert id(param) in no_decay_ids, name
+    assert id(model.token_embedding.weight) not in no_decay_ids
+
+
+def test_weight_decay_shrinks_weight_matrices_but_not_biases():
+    """Decoupled weight decay (AdamW) shrinks params toward zero even with
+    zero gradient -- confirms the split actually changes behavior, not
+    just bookkeeping."""
+    model = GPT(_tiny_model_config())
+    optimizer = configure_optimizer(model, learning_rate=1e-2, weight_decay=0.5)
+
+    before = {name: p.detach().clone() for name, p in model.named_parameters()}
+    for _ in range(20):
+        for p in model.parameters():
+            p.grad = torch.zeros_like(p)
+        optimizer.step()
+
+    for name, param in model.named_parameters():
+        if param.dim() >= 2:
+            assert not torch.equal(param, before[name]), f"{name} should shrink under weight decay"
+        else:
+            assert torch.equal(param, before[name]), f"{name} should be untouched (no weight decay)"
 
 
 def test_get_lr_linear_warmup():
@@ -236,6 +286,7 @@ train:
   eval_every: 2
   checkpoint_dir: ckpt/
   checkpoint_every: 2
+  weight_decay: 0.01
 """
     )
     model_config, train_config = load_config(config_path)
@@ -275,6 +326,7 @@ train:
   eval_every: 2
   checkpoint_dir: ckpt/
   checkpoint_every: 2
+  weight_decay: 0.01
 """
     )
     _, train_config = load_config(config_path)

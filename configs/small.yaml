@@ -12,11 +12,12 @@ train:
   learning_rate: 3e-4
   min_lr: 3e-5      # cosine decay floor -- see docs/lr-decay.md
   warmup_steps: 100
-  max_steps: 5000
+  max_steps: 20000
   grad_clip: 1.0
   eval_every: 250
   checkpoint_dir: checkpoints/
   checkpoint_every: 250
+  weight_decay: 0.01      # applied only to weight matrices -- see docs/weight-decay-grouping.md
 
 data:
   raw_path: data/raw/

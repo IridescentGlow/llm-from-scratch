@@ -31,6 +31,7 @@ def _tiny_train_config(**overrides) -> TrainConfig:
         eval_every=5,
         checkpoint_dir="",  # set per-test via tmp_path
         checkpoint_every=5,
+        weight_decay=0.01,
     )
     defaults.update(overrides)
     return TrainConfig(**defaults)

@@ -28,6 +28,7 @@ class TrainConfig:
     eval_every: int
     checkpoint_dir: str
     checkpoint_every: int
+    weight_decay: float
 
 
 def load_config(path: str | Path) -> tuple[GPTConfig, TrainConfig]:
@@ -79,6 +80,32 @@ def load_checkpoint_for_resume(checkpoint_dir: str | Path, model_config: GPTConf
             "architecture."
         )
     return checkpoint
+
+
+def configure_optimizer(model: GPT, learning_rate: float, weight_decay: float) -> torch.optim.AdamW:
+    """Build AdamW with weight decay applied only to weight matrices.
+
+    Decaying a bias or a LayerNorm gain toward zero doesn't fight
+    overfitting the way it does for a weight matrix -- it just biases the
+    model away from a shift/scale it may genuinely need. Standard practice
+    (see nanoGPT) is to split parameters by shape: anything with 2+ dims
+    (Linear/Embedding weights) gets `weight_decay`; anything 1-D (biases,
+    LayerNorm weights) gets none. Previously every parameter went through
+    a single `torch.optim.AdamW(model.parameters(), lr=...)` call, which
+    applied AdamW's default `weight_decay=0.01` uniformly.
+    """
+    decay, no_decay = [], []
+    for param in model.parameters():
+        if not param.requires_grad:
+            continue
+        (decay if param.dim() >= 2 else no_decay).append(param)
+    return torch.optim.AdamW(
+        [
+            {"params": decay, "weight_decay": weight_decay},
+            {"params": no_decay, "weight_decay": 0.0},
+        ],
+        lr=learning_rate,
+    )
 
 
 def get_lr(step: int, warmup_steps: int, max_steps: int, base_lr: float, min_lr: float) -> float:
@@ -146,7 +173,7 @@ def train_model(
     """
     model.to(device)
     model.train()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    optimizer = configure_optimizer(model, config.learning_rate, config.weight_decay)
     if optimizer_state_dict is not None:
         optimizer.load_state_dict(optimizer_state_dict)
 

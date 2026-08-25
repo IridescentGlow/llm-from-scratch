@@ -10,6 +10,7 @@ train:
   eval_every: 50
   checkpoint_dir: checkpoints/finetuned/
   checkpoint_every: 50
+  weight_decay: 0.01      # applied only to weight matrices -- see docs/weight-decay-grouping.md
 
 data:
   examples_path: data/finetune/examples.jsonl

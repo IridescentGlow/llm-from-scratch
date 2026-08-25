@@ -256,6 +256,7 @@ def test_finetuning_improves_loss_on_instruction_corpus(tmp_path):
         eval_every=100,
         checkpoint_dir=str(tmp_path / "finetuned"),
         checkpoint_every=100,
+        weight_decay=0.01,
     )
     result = train_model(model, dataset, dataset, finetune_config, log_fn=lambda _msg: None)
 
@@ -311,6 +312,7 @@ def test_masked_finetuning_trains_only_on_response_and_eos_positions(tmp_path):
             eval_every=1,
             checkpoint_dir=str(tmp_path / f"run_{loss_mask_array is None}"),
             checkpoint_every=1,
+            weight_decay=0.01,
         )
         torch.manual_seed(0)  # re-seed so DataLoader shuffling matches across the two runs
         train_model(model, dataset, dataset, config, log_fn=lambda _msg: None)
@@ -372,6 +374,7 @@ def test_masked_finetuning_end_to_end_improves_response_loss(tmp_path):
         eval_every=100,
         checkpoint_dir=str(tmp_path / "finetuned_masked"),
         checkpoint_every=100,
+        weight_decay=0.01,
     )
     train_model(model, dataset, dataset, finetune_config, log_fn=lambda _msg: None)
 

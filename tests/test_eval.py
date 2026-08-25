@@ -132,6 +132,7 @@ def test_val_loss_and_perplexity_improve_after_training(tmp_path):
         eval_every=100,
         checkpoint_dir=str(tmp_path / "ckpt"),
         checkpoint_every=100,
+        weight_decay=0.01,
     )
     train_model(model, dataset, dataset, train_config, log_fn=lambda _msg: None)
 

@@ -36,6 +36,7 @@ train:
   eval_every: {max_steps}
   checkpoint_dir: {checkpoint_dir}
   checkpoint_every: {checkpoint_every}
+  weight_decay: 0.01
 data:
   raw_path: {raw_dir}
   processed_path: {processed_dir}

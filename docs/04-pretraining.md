@@ -203,3 +203,10 @@ docs/checkpoint-resume.md for the full design and implementation status.
 periodically during the loop (not just at the end) and includes
 `optimizer_state_dict` and `step`; `train_model` gained `start_step`/
 `optimizer_state_dict` parameters; `scripts/train.py` gained `--resume`.
+
+Update (weight decay parameter grouping milestone): see
+docs/weight-decay-grouping.md for the full design and implementation
+status. `train_model` now builds the optimizer via `configure_optimizer`
+instead of a bare `AdamW(model.parameters(), lr=...)` call — weight
+matrices get `TrainConfig.weight_decay` (new required field); biases and
+LayerNorm gains get none.
